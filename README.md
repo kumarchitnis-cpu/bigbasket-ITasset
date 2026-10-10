@@ -7,7 +7,7 @@ Internal IT asset management workspace for Bigbasket — asset register and life
 - **Frontend**: React 18 + TypeScript + Vite 5 + Tailwind CSS
 - **Backend**: Node.js + Express API server (`server/`)
 - **Database**: SQLite (`server-data/itam.db`) — file-based, zero-config
-- **Auth**: email + password with scrypt hashing and signed JWT sessions (7-day expiry)
+- **Auth**: email + password with scrypt hashing and signed JWT sessions (7-day expiry), plus Google Identity Services sign-in
 - **AI**: OpenAI (gpt-4o-mini) for invoice field extraction and aggregate-only operational Q&A, called server-side
 
 ## Setup
@@ -19,6 +19,8 @@ npm run dev
 
 `npm run dev` starts both the API server (port 3001) and the Vite dev server. The first account you create is automatically assigned the `admin` role; every later signup becomes `employee`.
 
+Google sign-in requires an OAuth 2.0 **Web application** client ID from Google Cloud Console. Set that same client ID as both `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` in `.env`, and add each app origin (for local development, `http://localhost:5173`) under **Authorized JavaScript origins** in the OAuth client. Restart the API and Vite after configuration. The Google Identity Services button verifies the user's Google ID token on the API; successful sign-in creates or links an account by verified email and opens the Operations dashboard. New Google accounts follow the normal first-user-admin / later-user-employee policy. Without a configured client ID, the login page explains the required setup.
+
 ## Environment (`.env`)
 
 Copy `.env.example` to `.env`:
@@ -27,6 +29,8 @@ Copy `.env.example` to `.env`:
 - `VITE_API_URL` — API base URL used by the frontend
 - `JWT_SECRET` — strong random secret for session signing (generated for you in `.env`)
 - `DATA_DIR` — where the SQLite database and uploaded files live (git-ignored)
+- `GOOGLE_CLIENT_ID` — Google OAuth Web Client ID used by the API to verify Google ID tokens
+- `VITE_GOOGLE_CLIENT_ID` — the same Google OAuth Web Client ID, exposed to the browser by Vite
 - `OPENAI_API_KEY` — server-side key used for AI Assistant and invoice extraction; set it in the API server environment (a GitHub Actions secret is not automatically available to a running server)
 
 ## Roles

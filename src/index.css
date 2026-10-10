@@ -205,6 +205,85 @@ button { cursor: pointer; }
 .user-management-error { margin: 0 20px 14px; }
 .user-management-error .text-button { margin-left: 10px; }
 .user-table { min-width: 850px; }
+.operations-dashboard .page-heading { align-items: center; margin-bottom: 22px; }
+.operations-dashboard .page-heading h1 { font-size: 28px; }
+.operations-dashboard .page-heading .eyebrow { margin-bottom: 7px; }
+.operations-dashboard .heading-copy { margin-top: 6px; }
+.dashboard-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.dashboard-metrics .metric-card { padding: 15px; }
+.dashboard-metrics .metric-icon { width: 30px; height: 30px; margin-bottom: 12px; }
+.dashboard-metrics .metric-label { font-size: 11px; }
+.dashboard-metrics .metric-value-row strong { font-size: 24px; }
+.dashboard-metrics .metric-note { min-height: 14px; font-size: 9px; }
+.dashboard-reference-grid { display: grid; gap: 16px; margin-bottom: 16px; }
+.dashboard-overview-grid, .dashboard-chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dashboard-breakdown-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dashboard-recent-grid { grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); }
+.dashboard-panel { min-width: 0; overflow: hidden; }
+.dashboard-panel .panel-header { padding: 16px 18px; }
+.dashboard-panel .panel-header h2 { font-size: 13px; }
+.dashboard-panel .panel-header p { font-size: 10px; }
+.dashboard-bar-list { display: grid; gap: 13px; padding: 0 18px 18px; }
+.dashboard-bar-row { display: grid; gap: 6px; }
+.dashboard-bar-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #718797; font-size: 10px; }
+.dashboard-bar-label strong { color: #24435c; font-size: 10px; }
+.dashboard-bar-track { height: 7px; overflow: hidden; border-radius: 99px; background: #edf2f4; }
+.dashboard-bar-track > span { display: block; height: 100%; min-width: 3px; border-radius: inherit; background: #438f94; transition: width .25s ease; }
+.dashboard-bar-track > span.amber { background: #dda74f; }
+.dashboard-bar-track > span.teal { background: #4b9b93; }
+.dashboard-bar-track > span.blue { background: #397f9e; }
+.dashboard-bar-track > span.gray { background: #aab9c0; }
+.dashboard-bar-track > span.low { background: #7cae9f; }
+.dashboard-bar-track > span.medium { background: #e0b253; }
+.dashboard-bar-track > span.high { background: #df8e54; }
+.dashboard-bar-track > span.urgent { background: #c9685d; }
+.dashboard-chart-empty { display: grid; min-height: 120px; place-items: center; padding: 20px; color: #8a9ca6; font-size: 11px; text-align: center; }
+.dashboard-status-content { padding: 0 18px 15px; }
+.dashboard-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.dashboard-status-card { display: grid; gap: 8px; min-height: 68px; align-content: center; padding: 10px 12px; border: 1px solid #e6ecef; border-radius: 8px; background: #fafcfc; }
+.dashboard-status-card span { color: #778d9a; font-size: 10px; }
+.dashboard-status-card strong { color: #294a60; font: 700 19px Manrope, sans-serif; }
+.dashboard-status-card.blue { border-color: #d9e9ef; background: #f5fafc; }
+.dashboard-status-card.teal { border-color: #dcece8; background: #f4faf8; }
+.dashboard-status-card.amber { border-color: #f0e5cf; background: #fffaf2; }
+.dashboard-status-card.gray { border-color: #e5eaec; background: #f8fafb; }
+.dashboard-status-content > p { margin: 11px 0 0; color: #889ba5; font-size: 10px; }
+.dashboard-trend { display: grid; grid-template-columns: 25px minmax(0, 1fr); grid-template-rows: minmax(130px, 1fr) 17px; gap: 0 8px; padding: 0 18px 16px; }
+.dashboard-trend-y { display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 4px; color: #9aa9b1; font-size: 8px; text-align: right; }
+.dashboard-trend-plot { display: flex; align-items: flex-end; gap: 3px; min-width: 0; padding: 0 2px 1px; border-bottom: 1px solid #e9eef0; background: repeating-linear-gradient(to bottom, transparent 0, transparent 32%, #edf1f2 33%, transparent 34%); }
+.dashboard-trend-column { display: flex; flex: 1 1 0; height: 100%; align-items: flex-end; min-width: 1px; }
+.dashboard-trend-column > span { width: 100%; border-radius: 3px 3px 0 0; background: #4c88a4; opacity: .82; }
+.dashboard-trend-column.teal > span { background: #4b9b93; }
+.dashboard-trend-column:hover > span { opacity: 1; }
+.dashboard-trend-x { grid-column: 2; display: flex; justify-content: space-between; padding-top: 4px; color: #9aa9b1; font-size: 8px; }
+.dashboard-assets-table { min-width: 560px; }
+.dashboard-assets-table th { padding-bottom: 9px; }
+.dashboard-assets-table td { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-activity-list { max-height: 300px; overflow-y: auto; padding: 0 17px 10px; }
+.dashboard-activity-item { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #edf1f3; }
+.dashboard-activity-item:first-child { border-top: 0; }
+.dashboard-activity-mark { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 7px; color: #397d84; background: #e9f3f2; }
+.dashboard-activity-item > div { display: grid; min-width: 0; gap: 4px; }
+.dashboard-activity-item strong { overflow: hidden; color: #38586c; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-activity-item small { color: #91a2aa; font-size: 9px; }
+@media (max-width: 1100px) {
+  .dashboard-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dashboard-breakdown-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+  .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-overview-grid, .dashboard-chart-grid, .dashboard-breakdown-grid, .dashboard-recent-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  .operations-dashboard .page-heading { gap: 16px; }
+  .operations-dashboard .page-heading h1 { font-size: 23px; }
+  .dashboard-metrics .metric-card { padding: 12px; }
+  .dashboard-metrics .metric-value-row strong { font-size: 21px; }
+  .dashboard-reference-grid { gap: 12px; margin-bottom: 12px; }
+  .dashboard-panel .panel-header { padding: 14px; }
+  .dashboard-bar-list { padding: 0 14px 15px; }
+  .dashboard-trend { padding-right: 13px; padding-left: 13px; }
+}
 .user-cell { display: flex; align-items: center; gap: 10px; min-width: 190px; }
 .user-cell > div:last-child { display: grid; gap: 4px; }
 .user-cell strong { color: #315169; font-size: 11px; }

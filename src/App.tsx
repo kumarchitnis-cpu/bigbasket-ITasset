@@ -9,16 +9,13 @@ import {
   Box,
   BriefcaseBusiness,
   Bot,
-  CalendarClock,
   Check,
   ChevronDown,
   CircleAlert,
   CircleDollarSign,
   ClipboardList,
   ClipboardCheck,
-  CreditCard,
   Download,
-  FileCheck2,
   FileText,
   Laptop,
   LayoutDashboard,
@@ -26,7 +23,6 @@ import {
   Loader2,
   LogOut,
   Menu,
-  PackageCheck,
   Plus,
   RefreshCw,
   Search,
@@ -45,6 +41,24 @@ import {
 } from 'lucide-react';
 import { ApiError, api, auth, setOnUnauthorized, type AppDocument, type AppUser } from '@/lib/api';
 
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: { client_id: string; callback: (response: { credential: string }) => void }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: { theme: 'outline'; size: 'large'; text: 'signin_with'; shape: 'rectangular'; width: number },
+          ) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
 type Asset = {
   id: string;
   asset_tag: string;
@@ -60,6 +74,7 @@ type Asset = {
   warranty_end: string | null;
   department: string;
   last_audited_at?: string | null;
+  created_at?: string;
 };
 
 type AssetEvent = {
@@ -104,6 +119,7 @@ type Ticket = {
   assignee: string;
   requester: string;
   due_label: string;
+  created_at: string;
 };
 
 type PurchaseRequest = {
@@ -169,6 +185,17 @@ type WorkspaceNotification = {
   created_at: string;
 };
 
+type DashboardActivity = {
+  action: string;
+  entity_type: string;
+  created_at: string;
+};
+
+type DashboardData = {
+  recent: DashboardActivity[];
+  daily: { date: string; count: number }[];
+};
+
 type ManagedUser = AppUser & { created_at: string };
 
 const workspaceRoles = [
@@ -214,6 +241,7 @@ function App() {
   const [writeOffRequests, setWriteOffRequests] = useState<WriteOffRequest[]>([]);
   const [inventoryReceipts, setInventoryReceipts] = useState<InventoryReceipt[]>([]);
   const [notifications, setNotifications] = useState<WorkspaceNotification[]>([]);
+  const [dashboardActivity, setDashboardActivity] = useState<DashboardData>({ recent: [], daily: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -269,7 +297,7 @@ function App() {
     else setLoading(true);
     setError(null);
     try {
-      const [assetData, invoiceData, ticketData, requestData, employeeRequestData, writeOffData, receiptData, notificationData] = await Promise.all([
+      const [assetData, invoiceData, ticketData, requestData, employeeRequestData, writeOffData, receiptData, notificationData, dashboardData] = await Promise.all([
         api.get<Asset[]>('/api/assets'),
         api.get<Invoice[]>('/api/invoices'),
         api.get<Ticket[]>('/api/tickets'),
@@ -278,6 +306,7 @@ function App() {
         api.get<WriteOffRequest[]>('/api/workflows/write-offs'),
         api.get<InventoryReceipt[]>('/api/receipts'),
         api.get<WorkspaceNotification[]>('/api/notifications'),
+        api.get<DashboardData>('/api/dashboard/activity'),
       ]);
       setAssets(assetData);
       setInvoices(invoiceData);
@@ -287,6 +316,7 @@ function App() {
       setWriteOffRequests(writeOffData);
       setInventoryReceipts(receiptData);
       setNotifications(notificationData);
+      setDashboardActivity(dashboardData);
     } catch {
       setError('We could not load the workspace data. Please try again.');
     }
@@ -390,7 +420,7 @@ function App() {
 
         <div className="page-content">
           {loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
-            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} metrics={metrics} userName={user.full_name} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenServiceDesk={() => showTab('Service desk')} />}
+            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} tickets={tickets} requests={purchaseRequests} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenServiceDesk={() => showTab('Service desk')} />}
             {activeTab === 'Assets' && <AssetsView assets={filteredAssets} user={user} onAdd={() => setAssetModalOpen(true)} onRefresh={() => void loadData(true)} query={query} />}
             {activeTab === 'Procurement' && <ProcurementView requests={purchaseRequests} userName={user.full_name} department={user.department} onSaved={() => void loadData(true)} />}
             {activeTab === 'Invoices' && <InvoicesView invoices={invoices} user={user} query={query} onSaved={() => void loadData(true)} />}
@@ -412,30 +442,130 @@ function App() {
   );
 }
 
-function Overview({ assets, invoices, metrics, userName, onOpenAssets, onOpenInvoices, onOpenProcurement, onOpenServiceDesk }: { assets: Asset[]; invoices: Invoice[]; metrics: Record<string, number>; userName: string; onOpenAssets: () => void; onOpenInvoices: () => void; onOpenProcurement: () => void; onOpenServiceDesk: () => void }) {
-  const now = new Date();
-  const todayLabel = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
-  const hour = now.getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName = userName.trim().split(' ')[0] || userName;
-  const categoryCount = new Set(assets.map((asset) => asset.category)).size;
-  const total = Math.max(metrics.total, 1);
-  const assignedPct = (metrics.active / total) * 100;
-  const availablePct = (metrics.available / total) * 100;
-  const maintenancePct = (metrics.maintenance / total) * 100;
-  const donutStyle = { background: `conic-gradient(#163e5a 0% ${assignedPct}%, #4b9b93 ${assignedPct}% ${assignedPct + availablePct}%, #e6aa4b ${assignedPct + availablePct}% ${assignedPct + availablePct + maintenancePct}%, #dfe7ea ${assignedPct + availablePct + maintenancePct}% 100%)` };
-  const suggestion = useMemo(() => {
-    const exception = invoices.find((invoice) => invoice.status === 'UNDER_REVIEW' || invoice.status === 'ON_HOLD');
-    if (exception) return `Review the ${exception.vendor} invoice ${exception.invoice_number} before the next payment run.`;
-    if (metrics.approvals > 0) return `${metrics.approvals} purchase request${metrics.approvals === 1 ? '' : 's'} waiting for approval in the procurement queue.`;
-    if (metrics.openTickets > 0) return `${metrics.openTickets} open service ticket${metrics.openTickets === 1 ? '' : 's'} — clear urgent and high priority items first.`;
-    return 'All operational queues are clear. Register new assets as they arrive.';
-  }, [invoices, metrics]);
-  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">{todayLabel} <span className="live-dot"></span> Live workspace</p><h1>{greeting}, {firstName}</h1><p className="heading-copy">Here is what needs your attention across the operation today.</p></div><div className="heading-actions"><button className="button button-secondary"><CalendarClock size={16} /> This week <ChevronDown size={14} /></button><button className="button button-primary" onClick={onOpenAssets}><Plus size={17} /> Add asset</button></div></div>
-    <div className="metric-grid"><MetricCard label="Total assets" value={metrics.total.toString()} note={`Across ${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'}`} icon={Box} tone="blue" /><MetricCard label="Active / in use" value={metrics.active.toString()} note={`${Math.round((metrics.active / total) * 100)}% utilization`} icon={BriefcaseBusiness} tone="teal" /><MetricCard label="Available stock" value={metrics.available.toString()} note="Ready to assign" icon={PackageCheck} tone="amber" /><MetricCard label="Open exceptions" value={(metrics.invoiceExceptions + metrics.maintenance).toString()} note={`${metrics.invoiceExceptions} invoice · ${metrics.maintenance} maintenance`} icon={CircleAlert} tone="red" /></div>
-    <div className="dashboard-grid"><section className="panel asset-panel"><PanelHeader title="Asset portfolio" action="View asset register" onAction={onOpenAssets} /><div className="portfolio-content"><div className="donut-wrap"><div className="donut" style={donutStyle}><div className="donut-hole"><strong>{metrics.total}</strong><span>Total</span></div></div></div><div className="legend-list"><LegendRow color="navy" label="Assigned / in use" value={metrics.active} total={metrics.total} /><LegendRow color="teal" label="Available stock" value={metrics.available} total={metrics.total} /><LegendRow color="amber" label="Under maintenance" value={metrics.maintenance} total={metrics.total} /><LegendRow color="gray" label="Other" value={metrics.total - metrics.active - metrics.available - metrics.maintenance} total={metrics.total} /></div></div><div className="portfolio-footer"><div><span className="footer-label">Portfolio value</span><strong>{compactMoney.format(assets.reduce((sum, asset) => sum + Number(asset.purchase_cost), 0))}</strong></div><div className="footer-divider"></div><div><span className="footer-label">Warranty attention</span><strong className="warning-text">{metrics.warranty} assets <ArrowUpRight size={14} /></strong></div></div></section>
-      <section className="panel attention-panel"><PanelHeader title="Needs attention" action="View all" onAction={onOpenInvoices} /><div className="attention-list"><AttentionRow icon={FileCheck2} tone="amber" title={`${metrics.approvals} purchase request${metrics.approvals === 1 ? '' : 's'} awaiting approval`} detail="Approval queue · Procurement" action="Review" onAction={onOpenProcurement} /><AttentionRow icon={CreditCard} tone="red" title={`${metrics.invoiceExceptions} invoice exception${metrics.invoiceExceptions === 1 ? '' : 's'}`} detail="AI validation · Finance" action="Resolve" onAction={onOpenInvoices} /><AttentionRow icon={Ticket} tone="blue" title={`${metrics.openTickets} open service tickets`} detail="Service desk · SLA watch" action="Open desk" onAction={onOpenServiceDesk} /></div><div className="attention-tip"><Sparkles size={16} /><span><strong>Smart suggestion</strong> — {suggestion}</span></div></section></div>
-    <div className="dashboard-grid lower-grid"><section className="panel table-panel"><PanelHeader title="Recent assets" subtitle="Latest register activity" action="See register" onAction={onOpenAssets} /><AssetTable assets={assets.slice(0, 5)} compact /></section><section className="panel table-panel"><PanelHeader title="Invoice queue" subtitle="AI processing and exceptions" action="Open invoices" onAction={onOpenInvoices} /><InvoiceTable invoices={invoices.slice(0, 4)} compact /></section></div>
+function Overview({ assets, invoices, tickets, requests, employeeRequests, activity, onOpenAssets, onOpenInvoices, onOpenProcurement, onOpenServiceDesk }: {
+  assets: Asset[];
+  invoices: Invoice[];
+  tickets: Ticket[];
+  requests: PurchaseRequest[];
+  employeeRequests: EmployeeAssetRequest[];
+  activity: DashboardData;
+  onOpenAssets: () => void;
+  onOpenInvoices: () => void;
+  onOpenProcurement: () => void;
+  onOpenServiceDesk: () => void;
+}) {
+  const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+  const activeAssets = assets.filter((asset) => asset.status !== 'RETIRED').length;
+  const orderedRequests = requests.filter((request) => request.status === 'ORDERED').length;
+  const openTickets = tickets.filter((ticket) => ticket.status !== 'RESOLVED').length;
+  const requestStatuses = [
+    { label: 'Awaiting approval', value: requests.filter((request) => request.status === 'PENDING_APPROVAL').length, color: 'amber' },
+    { label: 'Approved', value: requests.filter((request) => request.status === 'APPROVED').length, color: 'teal' },
+    { label: 'Ordered', value: orderedRequests, color: 'blue' },
+    { label: 'Returned', value: requests.filter((request) => request.status === 'RETURNED').length, color: 'gray' },
+  ];
+  const ticketStatuses = [
+    { label: 'Open', value: tickets.filter((ticket) => ticket.status === 'OPEN').length, color: 'blue' },
+    { label: 'In progress', value: tickets.filter((ticket) => ticket.status === 'IN_PROGRESS').length, color: 'teal' },
+    { label: 'Waiting', value: tickets.filter((ticket) => ticket.status === 'WAITING').length, color: 'amber' },
+    { label: 'Resolved', value: tickets.filter((ticket) => ticket.status === 'RESOLVED').length, color: 'gray' },
+  ];
+  const priorityItems = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((priority) => ({
+    label: priority === 'URGENT' ? 'Critical' : priority[0] + priority.slice(1).toLowerCase(),
+    value: tickets.filter((ticket) => ticket.priority === priority).length,
+    color: priority.toLowerCase(),
+  }));
+  const departmentItems = Array.from(new Set(requests.map((request) => request.department)))
+    .map((department) => ({ label: department, value: requests.filter((request) => request.department === department).length, color: 'blue' }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+  const ticketCategoryItems = Array.from(new Set(tickets.map((ticket) => ticket.category)))
+    .map((category) => ({ label: category, value: tickets.filter((ticket) => ticket.category === category).length, color: 'teal' }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+  const ticketTrend = makeDailySeries(tickets.map((ticket) => ticket.created_at));
+  const activityTrend = makeDailySeries(activity.daily.map((item) => item.date), activity.daily);
+
+  return <div className="fade-in operations-dashboard">
+    <div className="page-heading">
+      <div><p className="eyebrow">Workspace overview <span className="live-dot"></span> Live data</p><h1>Operations Dashboard</h1><p className="heading-copy">{today} · Asset, procurement, and service overview.</p></div>
+      <div className="heading-actions"><button className="button button-secondary" onClick={onOpenInvoices}><FileText size={16} /> Invoice register <ArrowUpRight size={14} /></button><button className="button button-primary" onClick={onOpenAssets}><Plus size={17} /> Add asset</button></div>
+    </div>
+
+    <div className="metric-grid dashboard-metrics">
+      <MetricCard label="Total assets" value={assets.length.toLocaleString()} note="Registered in workspace" icon={Box} tone="blue" />
+      <MetricCard label="Active assets" value={activeAssets.toLocaleString()} note={`${assets.length - activeAssets} retired`} icon={BriefcaseBusiness} tone="teal" />
+      <MetricCard label="Purchase orders" value={orderedRequests.toLocaleString()} note={`${requests.length} purchase requests`} icon={ClipboardList} tone="amber" />
+      <MetricCard label="Invoice records" value={invoices.length.toLocaleString()} note="Tracked in invoice register" icon={FileText} tone="blue" />
+      <MetricCard label="Open tickets" value={openTickets.toLocaleString()} note={`${tickets.length} total tickets`} icon={Ticket} tone="red" />
+    </div>
+
+    <div className="dashboard-reference-grid dashboard-overview-grid">
+      <section className="panel dashboard-panel"><PanelHeader title="Purchase Requests by Status" action="View procurement" onAction={onOpenProcurement} /><DashboardBarList items={requestStatuses} emptyLabel="No purchase requests yet." /></section>
+      <section className="panel dashboard-panel"><PanelHeader title="Ticket Overview" action="Open service desk" onAction={onOpenServiceDesk} /><DashboardStatusGrid items={ticketStatuses} footer={`${employeeRequests.length} asset allocation request${employeeRequests.length === 1 ? '' : 's'}`} /></section>
+    </div>
+
+    <div className="dashboard-reference-grid dashboard-chart-grid">
+      <section className="panel dashboard-panel"><PanelHeader title="Ticket Trend" subtitle="Tickets created over the last 30 days" /><DashboardTrend values={ticketTrend} color="blue" /></section>
+      <section className="panel dashboard-panel"><PanelHeader title="Activity Trend" subtitle="Successful workspace actions over the last 30 days" /><DashboardTrend values={activityTrend} color="teal" /></section>
+    </div>
+
+    <div className="dashboard-reference-grid dashboard-breakdown-grid">
+      <section className="panel dashboard-panel"><PanelHeader title="Tickets by Priority" action="View tickets" onAction={onOpenServiceDesk} /><DashboardBarList items={priorityItems} emptyLabel="No tickets yet." /></section>
+      <section className="panel dashboard-panel"><PanelHeader title="Requests by Department" action="View procurement" onAction={onOpenProcurement} /><DashboardBarList items={departmentItems} emptyLabel="No purchase requests yet." /></section>
+      <section className="panel dashboard-panel"><PanelHeader title="Tickets by Type" action="View tickets" onAction={onOpenServiceDesk} /><DashboardBarList items={ticketCategoryItems} emptyLabel="No tickets yet." /></section>
+    </div>
+
+    <div className="dashboard-reference-grid dashboard-recent-grid">
+      <section className="panel table-panel dashboard-panel"><PanelHeader title="Recent Assets" subtitle="Latest registered devices" action="View all" onAction={onOpenAssets} /><div className="data-table-wrap"><table className="data-table dashboard-assets-table"><thead><tr><th>Make</th><th>Model</th><th>Serial number</th><th>Status</th></tr></thead><tbody>{assets.slice(0, 6).map((asset) => <tr key={asset.id}><td>{asset.manufacturer}</td><td>{asset.model}</td><td>{asset.serial_number}</td><td><StatusBadge status={asset.status} /></td></tr>)}</tbody></table>{assets.length === 0 && <EmptyState text="No assets have been registered yet." />}</div></section>
+      <section className="panel dashboard-panel dashboard-activity-panel"><PanelHeader title="Recent Activity" subtitle="Latest successful workspace actions" /><div className="dashboard-activity-list">{activity.recent.map((item, index) => <div className="dashboard-activity-item" key={`${item.action}-${item.entity_type}-${item.created_at}-${index}`}><span className="dashboard-activity-mark"><Activity size={14} /></span><div><strong>{formatActivity(item.action)} · {formatActivity(item.entity_type)}</strong><small>{formatDateTime(item.created_at)}</small></div></div>)}{activity.recent.length === 0 && <EmptyState text="Workspace activity will appear here." />}</div></section>
+    </div>
+  </div>;
+}
+
+function makeDailySeries(values: string[], stored: { date: string; count: number }[] = []) {
+  const counts = new Map<string, number>();
+  if (stored.length) {
+    stored.forEach((item) => counts.set(item.date.slice(0, 10), item.count));
+  } else {
+    values.forEach((value) => {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        const key = value.slice(0, 10);
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+    });
+  }
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(today);
+    date.setUTCDate(today.getUTCDate() - (29 - index));
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    return { date: key, label: date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }), value: counts.get(key) || 0 };
+  });
+}
+
+function formatActivity(value: string) {
+  return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function DashboardBarList({ items, emptyLabel }: { items: { label: string; value: number; color: string }[]; emptyLabel: string }) {
+  const maximum = Math.max(...items.map((item) => item.value), 0);
+  if (maximum === 0) return <div className="dashboard-chart-empty">{emptyLabel}</div>;
+  return <div className="dashboard-bar-list">{items.map((item) => <div className="dashboard-bar-row" key={item.label}><div className="dashboard-bar-label"><span>{item.label}</span><strong>{item.value}</strong></div><div className="dashboard-bar-track"><span className={item.color} style={{ width: `${Math.max((item.value / maximum) * 100, 3)}%` }} /></div></div>)}</div>;
+}
+
+function DashboardStatusGrid({ items, footer }: { items: { label: string; value: number; color: string }[]; footer: string }) {
+  return <div className="dashboard-status-content"><div className="dashboard-status-grid">{items.map((item) => <div className={`dashboard-status-card ${item.color}`} key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>)}</div><p>{footer}</p></div>;
+}
+
+function DashboardTrend({ values, color }: { values: { date: string; label: string; value: number }[]; color: string }) {
+  const maximum = Math.max(...values.map((item) => item.value), 1);
+  return <div className="dashboard-trend" role="img" aria-label={`Daily activity chart, ${values.reduce((sum, item) => sum + item.value, 0)} total over 30 days`}>
+    <div className="dashboard-trend-y"><span>{maximum}</span><span>{Math.ceil(maximum / 2)}</span><span>0</span></div>
+    <div className="dashboard-trend-plot">{values.map((item) => <div className={`dashboard-trend-column ${color}`} key={item.date} title={`${item.label}: ${item.value}`}><span style={{ height: `${item.value ? Math.max((item.value / maximum) * 100, 4) : 0}%` }} /></div>)}</div>
+    <div className="dashboard-trend-x"><span>{values[0]?.label}</span><span>{values[14]?.label}</span><span>{values[29]?.label}</span></div>
   </div>;
 }
 
@@ -991,8 +1121,6 @@ function MetricCard({ label, value, note, icon: Icon, tone, trend, down }: { lab
 function MiniStat({ label, value, tone }: { label: string; value: string; tone: string }) { return <div className="mini-stat"><span className={`mini-dot ${tone}`}></span><div><span>{label}</span><strong>{value}</strong></div></div>; }
 function PanelHeader({ title, subtitle, action, onAction }: { title: string; subtitle?: string; action?: string; onAction?: () => void }) { return <div className="panel-header"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action && <button className="text-button" onClick={onAction}>{action} <ArrowUpRight size={14} /></button>}</div>; }
 function PageTitle({ eyebrow, title, copy, action, icon: Icon, onAction }: { eyebrow: string; title: string; copy: string; action?: string; icon?: typeof Plus; onAction?: () => void }) { return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="heading-copy">{copy}</p></div>{action && Icon && <button className="button button-primary" onClick={onAction}><Icon size={17} /> {action}</button>}</div>; }
-function LegendRow({ color, label, value, total }: { color: string; label: string; value: number; total: number }) { return <div className="legend-row"><span className={`legend-dot ${color}`}></span><span className="legend-label">{label}</span><strong>{value}</strong><span className="legend-percent">{total ? Math.round((value / total) * 100) : 0}%</span></div>; }
-function AttentionRow({ icon: Icon, tone, title, detail, action, onAction }: { icon: typeof FileText; tone: string; title: string; detail: string; action: string; onAction?: () => void }) { return <div className="attention-row"><div className={`attention-icon ${tone}`}><Icon size={17} /></div><div className="attention-copy"><strong>{title}</strong><span>{detail}</span></div><button className="small-button" onClick={onAction}>{action}</button></div>; }
 function StatusBadge({ status }: { status: string }) { const label = status.split('_').join(' '); return <span className={`status-badge ${status.toLowerCase()}`}><span></span>{label.charAt(0) + label.slice(1).toLowerCase()}</span>; }
 function PriorityBadge({ priority }: { priority: string }) { return <span className={`priority-badge ${priority.toLowerCase()}`}>{priority}</span>; }
 function LoadingState() { return <div className="state-card"><Loader2 size={23} className="spin" /><strong>Loading your workspace</strong><span>Gathering the latest operational data...</span></div>; }
@@ -1020,6 +1148,7 @@ function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
   const [fullName, setFullName] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const googleButtonRef = useRef<HTMLDivElement>(null);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true);
@@ -1035,7 +1164,62 @@ function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
       setBusy(false);
     }
   };
-  return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control procurement, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form><button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Bigbasket? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
+  const signInWithGoogle = useCallback(async (credential: string) => {
+    setBusy(true);
+    setMessage('');
+    try {
+      const user = await auth.signInWithGoogle(credential);
+      onAuth(user);
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'Google sign-in failed. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, [onAuth]);
+  useEffect(() => {
+    if (mode !== 'sign-in' || !GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
+    let active = true;
+    const renderGoogleButton = () => {
+      const google = window.google;
+      const container = googleButtonRef.current;
+      if (!active || !google || !container) return;
+      container.replaceChildren();
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response) => void signInWithGoogle(response.credential),
+      });
+      google.accounts.id.renderButton(container, {
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'rectangular',
+        width: Math.max(240, Math.floor(container.getBoundingClientRect().width)),
+      });
+    };
+    let script = document.getElementById('google-identity-services') as HTMLScriptElement | null;
+    const onLoad = () => renderGoogleButton();
+    const onError = () => setMessage('Google sign-in could not be loaded. Check your connection and try again.');
+    if (window.google) {
+      renderGoogleButton();
+    } else {
+      if (!script) {
+        script = document.createElement('script');
+        script.id = 'google-identity-services';
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+      }
+      script.addEventListener('load', onLoad);
+      script.addEventListener('error', onError);
+      if (!script.isConnected) document.head.appendChild(script);
+    }
+    return () => {
+      active = false;
+      script?.removeEventListener('load', onLoad);
+      script?.removeEventListener('error', onError);
+    };
+  }, [mode, signInWithGoogle]);
+  return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control procurement, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message" role="alert">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form>{mode === 'sign-in' && <><div className="auth-divider"><span>or continue with</span></div>{GOOGLE_CLIENT_ID ? <div className="google-signin" ref={googleButtonRef} aria-label="Sign in with Google" /> : <button type="button" className="button button-google" onClick={() => setMessage('Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID and VITE_GOOGLE_CLIENT_ID to the server and frontend environment, then restart the app.')}><svg aria-hidden="true" viewBox="0 0 48 48" width="18" height="18"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.9 6.1-15z" /><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9L30.9 34c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44z" /><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3z" /><path fill="#EA4335" d="M24 11.9c3 0 5.7 1 7.8 3.1l5.9-5.9C34.1 5.8 29.5 4 24 4A20 20 0 0 0 5.8 15.1l6.8 5.3c1.6-4.9 6.1-8.5 11.4-8.5z" /></svg>Login with Google</button>}</>}<button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Bigbasket? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
 }
 
 type InvoiceExtraction = {

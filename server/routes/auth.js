@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
+import { OAuth2Client } from 'google-auth-library';
 import { audit, getDb, newId, nowIso } from '../db.js';
 import { hashPassword, signToken, verifyPassword } from '../auth.js';
 import { requireAuth } from '../rbac.js';
@@ -56,6 +57,63 @@ router.post('/signin', (req, res, next) => {
     res.json({ token: signToken(user), user: publicUser(user) });
   } catch (e) {
     next(e);
+  }
+});
+
+router.post('/google', async (req, res, next) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const credential = typeof req.body?.credential === 'string' ? req.body.credential : '';
+  if (!clientId) return res.status(503).json({ error: 'Google sign-in is not configured. Contact your workspace administrator.' });
+  if (!credential) return res.status(400).json({ error: 'A Google credential is required.' });
+
+  let profile;
+  try {
+    const ticket = await new OAuth2Client().verifyIdToken({ idToken: credential, audience: clientId });
+    profile = ticket.getPayload();
+    if (!profile?.sub || !profile.email || profile.email_verified !== true) {
+      return res.status(401).json({ error: 'Google sign-in requires a verified Google email address.' });
+    }
+  } catch {
+    return res.status(401).json({ error: 'Google sign-in could not be verified. Please try again.' });
+  }
+
+  try {
+    const db = getDb();
+    const email = profile.email.toLowerCase().trim();
+    let user = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(profile.sub);
+    if (!user) {
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (user?.google_sub && user.google_sub !== profile.sub) {
+        return res.status(409).json({ error: 'This workspace account is linked to a different Google account.' });
+      }
+      if (user && !user.active) {
+        return res.status(401).json({ error: 'Your account is inactive. Contact your workspace administrator.' });
+      }
+      if (!user) {
+        const role = db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0 ? 'admin' : 'employee';
+        const id = newId();
+        const passwordHash = hashPassword(crypto.randomBytes(32).toString('hex'));
+        db.prepare(
+          'INSERT INTO users (id, email, full_name, password_hash, google_sub, role, department, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
+        ).run(id, email, profile.name?.trim() || 'Google user', passwordHash, profile.sub, role, 'General');
+        user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        audit(id, 'GOOGLE_SIGNUP', 'user', id, 'SUCCESS');
+      } else {
+        db.prepare('UPDATE users SET google_sub = ?, updated_at = ? WHERE id = ?').run(profile.sub, nowIso(), user.id);
+        user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+      }
+    }
+
+    if (!user.active) {
+      return res.status(401).json({ error: 'Your account is inactive. Contact your workspace administrator.' });
+    }
+    if (user.email !== email) {
+      return res.status(401).json({ error: 'The Google account email no longer matches this workspace account.' });
+    }
+    audit(user.id, 'GOOGLE_SIGNIN', 'user', user.id, 'SUCCESS');
+    return res.json({ token: signToken(user), user: publicUser(user) });
+  } catch (error) {
+    return next(error);
   }
 });
 

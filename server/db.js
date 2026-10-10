@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   full_name TEXT NOT NULL DEFAULT 'Workspace user',
   password_hash TEXT NOT NULL,
+  google_sub TEXT UNIQUE,
   role TEXT NOT NULL CHECK (role IN ('admin', 'it_asset_manager', 'procurement_officer', 'finance_officer', 'approver', 'employee', 'auditor')) DEFAULT 'employee',
   department TEXT NOT NULL DEFAULT 'General',
   active INTEGER NOT NULL DEFAULT 1,
@@ -263,6 +264,11 @@ export function ensureSchema() {
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map((column) => column.name));
+  if (!userColumns.has('google_sub')) {
+    db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx ON users(google_sub) WHERE google_sub IS NOT NULL');
+  }
   const invoiceColumns = new Set(db.prepare('PRAGMA table_info(it_invoices)').all().map((column) => column.name));
   if (!invoiceColumns.has('extracted_fields')) {
     db.exec("ALTER TABLE it_invoices ADD COLUMN extracted_fields TEXT NOT NULL DEFAULT '{}'");

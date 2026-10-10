@@ -5,6 +5,31 @@ import { requireAuth, requireRole } from '../rbac.js';
 const router = Router();
 router.use(requireAuth);
 
+router.get('/dashboard/activity', (req, res, next) => {
+  try {
+    const db = getDb();
+    const recent = db.prepare(
+      `SELECT action, entity_type, created_at
+       FROM app_audit_log
+       WHERE outcome = 'SUCCESS' AND action NOT IN ('SIGNIN', 'GOOGLE_SIGNIN')
+       ORDER BY created_at DESC
+       LIMIT 8`,
+    ).all();
+    const daily = db.prepare(
+      `SELECT date(created_at) AS date, COUNT(*) AS count
+       FROM app_audit_log
+       WHERE outcome = 'SUCCESS'
+         AND action NOT IN ('SIGNIN', 'GOOGLE_SIGNIN')
+         AND created_at >= datetime('now', '-29 days')
+       GROUP BY date(created_at)
+       ORDER BY date(created_at)`,
+    ).all();
+    res.json({ recent, daily });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // --- Profiles -------------------------------------------------------------
 
 router.get('/profiles', requireRole('admin'), (req, res, next) => {

@@ -128,6 +128,11 @@ export const auth = {
     localStorage.setItem('itam_token', data.token);
     return data.user;
   },
+  async signInWithGoogle(credential: string): Promise<AppUser> {
+    const data = await api.post<{ token: string; user: AppUser }>('/api/auth/google', { credential });
+    localStorage.setItem('itam_token', data.token);
+    return data.user;
+  },
   me(): Promise<AppUser> {
     return api.get<AppUser>('/api/auth/me');
   },
