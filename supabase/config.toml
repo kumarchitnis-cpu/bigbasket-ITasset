@@ -1,0 +1,3 @@
+[functions.process-invoice]
+verify_jwt = true
+entrypoint = "./functions/process-invoice/index.ts"

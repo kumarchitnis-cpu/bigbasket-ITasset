@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import {
   Activity,
   ArrowDownRight,
@@ -17,12 +18,12 @@ import {
   LayoutDashboard,
   LifeBuoy,
   Loader2,
+  LogOut,
   Menu,
   PackageCheck,
   Plus,
   RefreshCw,
   Search,
-  Server,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -83,6 +84,15 @@ type PurchaseRequest = {
   needed_by: string;
 };
 
+type Profile = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  department: string;
+  active: boolean;
+};
+
 type Tab = 'Overview' | 'Assets' | 'Procurement' | 'Invoices' | 'Service desk';
 
 const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
@@ -108,6 +118,15 @@ function App() {
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const loadProfile = async (userId: string) => {
+    const { data } = await supabase.from('app_profiles').select('id, email, full_name, role, department, active').eq('id', userId).maybeSingle();
+    setProfile((data ?? null) as Profile | null);
+    setAuthLoading(false);
+  };
 
   const loadData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -135,8 +154,31 @@ function App() {
   };
 
   useEffect(() => {
-    void loadData();
+    let mounted = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      if (data.session) void loadProfile(data.session.user.id);
+      else setAuthLoading(false);
+    });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (nextSession) {
+        void loadProfile(nextSession.user.id);
+      } else {
+        setProfile(null);
+        setAuthLoading(false);
+      }
+    });
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
+
+  useEffect(() => {
+    if (session && profile) void loadData();
+  }, [session, profile]);
 
   const filteredAssets = useMemo(() => {
     const normalized = query.toLowerCase().trim();
@@ -163,24 +205,27 @@ function App() {
     setMobileNavOpen(false);
   };
 
+  if (authLoading) return <AuthLoading />;
+  if (!session || !profile) return <AuthScreen />;
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}>
         <div className="brand-row">
-          <div className="brand-mark"><Server size={19} strokeWidth={2.3} /></div>
-          <div><div className="brand-name">NEXUS</div><div className="brand-subtitle">IT OPERATIONS</div></div>
+          <img className="brand-logo" src="/images/images.jpeg" alt="Bigbasket" />
+          <div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div>
           <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X size={18} /></button>
         </div>
-        <div className="workspace-switcher"><div className="workspace-icon">A</div><div className="workspace-copy"><span>Acme Corporation</span><small>Operations workspace</small></div><ChevronDown size={15} /></div>
+        <div className="workspace-switcher"><img className="workspace-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="workspace-copy"><span>Bigbasket</span><small>Operations workspace</small></div><ChevronDown size={15} /></div>
         <div className="nav-section-label">Workspace</div>
         <nav className="main-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}</button>)}</nav>
         <div className="nav-section-label">Manage</div>
         <nav className="main-nav"><button className="nav-item"><ShieldCheck size={18} /><span>Access & security</span></button><button className="nav-item"><Activity size={18} /><span>Audit log</span></button><button className="nav-item"><Settings2 size={18} /><span>Settings</span></button></nav>
-        <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">AM</div><div className="profile-copy"><strong>Alex Morgan</strong><span>IT Asset Manager</span></div><MoreDots /></div></div>
+        <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(profile.full_name)}</div><div className="profile-copy"><strong>{profile.full_name}</strong><span>{roleLabel(profile.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={() => void supabase.auth.signOut()}><LogOut size={15} /></button></div></div>
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets, people, tickets..." /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /><span></span></button><div className="avatar avatar-light">AM</div></div></header>
+        <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets, people, tickets..." /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /><span></span></button><div className="avatar avatar-light">{initials(profile.full_name)}</div></div></header>
 
         <div className="page-content">
           {loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
@@ -216,7 +261,8 @@ function ProcurementView({ requests }: { requests: PurchaseRequest[] }) {
 }
 
 function InvoicesView({ invoices }: { invoices: Invoice[] }) {
-  return <div className="fade-in"><PageTitle eyebrow="Finance / AI processing" title="Invoice queue" copy="Review extracted values, exceptions, and three-way matching before payment." action="Upload invoice" icon={Plus} /><div className="stat-strip"><MiniStat label="In queue" value={invoices.filter((i) => i.status !== 'PROCESSED').length.toString()} tone="amber" /><MiniStat label="Needs review" value={invoices.filter((i) => i.status === 'UNDER_REVIEW' || i.status === 'ON_HOLD').length.toString()} tone="red" /><MiniStat label="Processed spend" value={compactMoney.format(invoices.filter((i) => i.status === 'PROCESSED').reduce((sum, invoice) => sum + Number(invoice.total), 0))} tone="teal" /></div><section className="panel table-panel full-panel"><InvoiceTable invoices={invoices} /></section></div>;
+  const [uploadOpen, setUploadOpen] = useState(false);
+  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Finance / AI processing</p><h1>Invoice queue</h1><p className="heading-copy">Review extracted values, exceptions, and three-way matching before payment.</p></div><button className="button button-primary" onClick={() => setUploadOpen(true)}><Plus size={17} /> Upload invoice</button></div><div className="stat-strip"><MiniStat label="In queue" value={invoices.filter((i) => i.status !== 'PROCESSED').length.toString()} tone="amber" /><MiniStat label="Needs review" value={invoices.filter((i) => i.status === 'UNDER_REVIEW' || i.status === 'ON_HOLD').length.toString()} tone="red" /><MiniStat label="Processed spend" value={compactMoney.format(invoices.filter((i) => i.status === 'PROCESSED').reduce((sum, invoice) => sum + Number(invoice.total), 0))} tone="teal" /></div><section className="panel table-panel full-panel"><InvoiceTable invoices={invoices} /></section>{uploadOpen && <InvoiceUploadModal onClose={() => setUploadOpen(false)} />}</div>;
 }
 
 function ServiceDeskView({ tickets }: { tickets: Ticket[] }) {
@@ -238,9 +284,91 @@ function PriorityBadge({ priority }: { priority: string }) { return <span classN
 function LoadingState() { return <div className="state-card"><Loader2 size={23} className="spin" /><strong>Loading your workspace</strong><span>Gathering the latest operational data...</span></div>; }
 function ErrorState({ onRetry }: { onRetry: () => void }) { return <div className="state-card error-state"><CircleAlert size={25} /><strong>Workspace unavailable</strong><span>We could not retrieve the latest records.</span><button className="button button-primary" onClick={onRetry}><RefreshCw size={16} /> Try again</button></div>; }
 function EmptyState({ text }: { text: string }) { return <div className="empty-state"><Tag size={18} /><span>{text}</span></div>; }
-function MoreDots() { return <button className="more-dots" aria-label="More account options">•••</button>; }
 function initials(value: string) { return value.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase(); }
 function formatDate(value: string) { return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value)); }
+
+function roleLabel(role: string) { return role.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '); }
+
+function AuthLoading() { return <div className="auth-shell"><div className="auth-loading"><Loader2 size={24} className="spin" /><span>Preparing your secure workspace</span></div></div>; }
+
+function AuthScreen() {
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
+  const [email, setEmail] = useState('kumar.chitnis@bigbasket.com');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    const result = mode === 'sign-in'
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
+    if (result.error) setMessage('We could not complete that request. Check your details and try again.');
+    else if (mode === 'sign-up') setMessage('Your workspace account is ready. You can sign in now.');
+    setBusy(false);
+  };
+  return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control procurement, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Alex Morgan" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="kumar.chitnis@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form><button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Nexus? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
+}
+
+type InvoiceExtraction = {
+  invoice_number: string | null;
+  vendor: string | null;
+  purchase_order: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  currency: string | null;
+  subtotal: number | null;
+  tax: number | null;
+  total: number | null;
+  confidence: number;
+  review_reason: string | null;
+};
+
+function InvoiceUploadModal({ onClose }: { onClose: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [extraction, setExtraction] = useState<InvoiceExtraction | null>(null);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!file) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) throw new Error('Sign in required');
+      const dataUrl = await readAsDataUrl(file);
+      const buffer = await file.arrayBuffer();
+      const digest = await crypto.subtle.digest('SHA-256', buffer);
+      const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      const storagePath = `${userId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
+      const upload = await supabase.storage.from('it-documents').upload(storagePath, file, { contentType: file.type, upsert: false });
+      if (upload.error) throw new Error('Upload failed');
+      const documentInsert = await supabase.from('app_documents').insert({ storage_path: storagePath, original_name: file.name, mime_type: file.type, file_size: file.size, sha256, document_type: 'INVOICE', extraction_status: 'EXTRACTING' }).select('id').maybeSingle();
+      if (documentInsert.error || !documentInsert.data) throw new Error('Document record failed');
+      const result = await supabase.functions.invoke('process-invoice', { body: { imageDataUrl: dataUrl, filename: file.name } });
+      if (result.error || !result.data?.extraction) {
+        await supabase.from('app_documents').update({ extraction_status: 'FAILED', review_reason: 'AI review was unavailable.' }).eq('id', documentInsert.data.id);
+        throw new Error('AI review failed');
+      }
+      const data = result.data as { extraction: InvoiceExtraction };
+      setExtraction(data.extraction);
+      await supabase.from('app_documents').update({ extraction_status: data.extraction.confidence >= 85 && !data.extraction.review_reason ? 'VALIDATED' : 'NEEDS_REVIEW', extracted_fields: data.extraction, confidence: data.extraction.confidence, review_reason: data.extraction.review_reason }).eq('id', documentInsert.data.id);
+    } catch {
+      setMessage('We could not process this document. Check the file and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card invoice-upload-card"><div className="modal-header"><div><p className="eyebrow">AI invoice review</p><h2>Upload and extract</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div>{extraction ? <div className="extraction-result"><div className="ai-result-banner"><Sparkles size={18} /><div><strong>Review complete</strong><span>{extraction.confidence}% confidence · Human approval still required</span></div></div><div className="extraction-grid"><ExtractionField label="Invoice number" value={extraction.invoice_number} /><ExtractionField label="Vendor" value={extraction.vendor} /><ExtractionField label="Purchase order" value={extraction.purchase_order} /><ExtractionField label="Invoice date" value={extraction.invoice_date} /><ExtractionField label="Currency" value={extraction.currency} /><ExtractionField label="Total" value={extraction.total === null ? null : money.format(extraction.total)} /></div>{extraction.review_reason && <div className="review-warning"><CircleAlert size={16} /><span>{extraction.review_reason}</span></div>}<div className="modal-actions"><button className="button button-primary" onClick={onClose}>Done</button></div></div> : <form onSubmit={submit}><label className="upload-drop"><FileText size={27} /><strong>{file ? file.name : 'Choose an invoice document'}</strong><span>{file ? `${Math.round(file.size / 1024)} KB ready for review` : 'PDF, PNG, JPG, or WebP · up to 10 MB'}</span><input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>{message && <div className="auth-message">{message}</div>}<div className="ai-trust-note"><ShieldCheck size={15} /><span>Files stay private. AI suggestions are stored with confidence and routed to review when needed.</span></div><div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!file || busy}>{busy ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />} {busy ? 'Reviewing...' : 'Review with AI'}</button></div></form>}</div></div>;
+}
+
+function ExtractionField({ label, value }: { label: string; value: string | number | null }) { return <div className="extraction-field"><span>{label}</span><strong>{value ?? 'Not found'}</strong></div>; }
+
+function readAsDataUrl(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Could not read file')); reader.readAsDataURL(file); }); }
 
 function AssetModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [saving, setSaving] = useState(false);
