@@ -51,6 +51,7 @@ Copy `.env.example` to `.env`:
 
 ## Production notes
 
+- **Render API deployment**: create a new Blueprint from this repository and use `render.yaml`. It provisions the Express API on Node 22 with a 1 GB persistent disk mounted at `/var/data`; SQLite and uploads are stored there. The blueprint generates `JWT_SECRET`. Set `GOOGLE_CLIENT_ID` and `OPENAI_API_KEY` in Render only if those services are configured. After deployment, verify `https://<service>.onrender.com/api/health` returns `{"ok":true,"service":"itam-api"}`. Add the API origin to the frontend's `VITE_API_URL` build setting, and set `VITE_GOOGLE_CLIENT_ID` to the same Google client ID if enabling browser Google sign-in; then rebuild and redeploy the Bolt frontend. Persistent-disk plans are required; without the disk, SQLite data and uploaded documents will not survive instance replacement.
 - Record numbers (`TKT-000001…`, `PR-000001…`, `GR-000001…`) are issued by the server from sequences — clients never invent identifiers.
 - Asset registration and lifecycle actions write timestamped events with the acting user. Asset managers can assign, return, transfer, quarantine, retire, audit, and record maintenance start/completion from the asset history.
 - Lifecycle status and custodian changes use the asset event endpoint so they cannot bypass the history record; audit and maintenance updates are committed together with the asset change.
