@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import {
   Activity,
   ArrowDownRight,
@@ -8,7 +7,6 @@ import {
   Box,
   BriefcaseBusiness,
   CalendarClock,
-  Chrome,
   ChevronDown,
   CircleAlert,
   ClipboardList,
@@ -32,7 +30,7 @@ import {
   Ticket,
   X,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { ApiError, api, auth, setOnUnauthorized, type AppDocument, type AppUser } from '@/lib/api';
 
 type Asset = {
   id: string;
@@ -86,15 +84,6 @@ type PurchaseRequest = {
   created_at: string;
 };
 
-type Profile = {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-  department: string;
-  active: boolean;
-};
-
 type Tab = 'Overview' | 'Assets' | 'Procurement' | 'Invoices' | 'Service desk';
 
 const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
@@ -120,77 +109,49 @@ function App() {
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [profileError, setProfileError] = useState(false);
 
-  const loadProfile = async (userId: string) => {
-    const { data, error } = await supabase.from('app_profiles').select('id, email, full_name, role, department, active').eq('id', userId).maybeSingle();
-    if (error) {
-      setProfileError(true);
-    } else {
-      setProfileError(false);
-      setProfile((data ?? null) as Profile | null);
-    }
-    setAuthLoading(false);
-  };
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      auth.signOut();
+      setUser(null);
+    });
+  }, []);
 
   const loadData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
-
-    const [assetResponse, invoiceResponse, ticketResponse, requestResponse] = await Promise.all([
-      supabase.from('it_assets').select('*').order('created_at', { ascending: false }),
-      supabase.from('it_invoices').select('*').order('created_at', { ascending: false }),
-      supabase.from('it_tickets').select('*').order('created_at', { ascending: false }),
-      supabase.from('it_purchase_requests').select('*').order('created_at', { ascending: false }),
-    ]);
-
-    const firstError = assetResponse.error ?? invoiceResponse.error ?? ticketResponse.error ?? requestResponse.error;
-    if (firstError) {
+    try {
+      const [assetData, invoiceData, ticketData, requestData] = await Promise.all([
+        api.get<Asset[]>('/api/assets'),
+        api.get<Invoice[]>('/api/invoices'),
+        api.get<Ticket[]>('/api/tickets'),
+        api.get<PurchaseRequest[]>('/api/purchase-requests'),
+      ]);
+      setAssets(assetData);
+      setInvoices(invoiceData);
+      setTickets(ticketData);
+      setPurchaseRequests(requestData);
+    } catch {
       setError('We could not load the workspace data. Please try again.');
-    } else {
-      setAssets((assetResponse.data ?? []) as Asset[]);
-      setInvoices((invoiceResponse.data ?? []) as Invoice[]);
-      setTickets((ticketResponse.data ?? []) as Ticket[]);
-      setPurchaseRequests((requestResponse.data ?? []) as PurchaseRequest[]);
     }
     setLoading(false);
     setRefreshing(false);
   };
 
   useEffect(() => {
-    let mounted = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session);
-      if (data.session) void loadProfile(data.session.user.id);
-      else setAuthLoading(false);
-    });
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      if (nextSession) {
-        setProfileError(false);
-        void (async () => {
-          await loadProfile(nextSession.user.id);
-        })();
-      } else {
-        setProfile(null);
-        setProfileError(false);
-        setAuthLoading(false);
-      }
-    });
-    return () => {
-      mounted = false;
-      authListener.subscription.unsubscribe();
-    };
+    auth
+      .me()
+      .then((currentUser) => setUser(currentUser))
+      .catch(() => null)
+      .finally(() => setAuthLoading(false));
   }, []);
 
   useEffect(() => {
-    if (session && profile) void loadData();
-  }, [session, profile]);
+    if (user) void loadData();
+  }, [user]);
 
   const filteredAssets = useMemo(() => {
     const normalized = query.toLowerCase().trim();
@@ -218,9 +179,13 @@ function App() {
     setMobileNavOpen(false);
   };
 
+  const signOut = () => {
+    auth.signOut();
+    setUser(null);
+  };
+
   if (authLoading) return <AuthLoading />;
-  if (!session) return <AuthScreen />;
-  if (profileError || !profile) return <ProfileLoadError onRetry={() => { setProfileError(false); setAuthLoading(true); void loadProfile(session.user.id); }} onSignOut={() => void supabase.auth.signOut()} />;
+  if (!user) return <AuthScreen onAuth={setUser} />;
 
   return (
     <div className="app-shell">
@@ -235,23 +200,23 @@ function App() {
         <nav className="main-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}</button>)}</nav>
         <div className="nav-section-label">Manage</div>
         <nav className="main-nav"><button className="nav-item"><ShieldCheck size={18} /><span>Access & security</span></button><button className="nav-item"><Activity size={18} /><span>Audit log</span></button><button className="nav-item"><Settings2 size={18} /><span>Settings</span></button></nav>
-        <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(profile.full_name)}</div><div className="profile-copy"><strong>{profile.full_name}</strong><span>{roleLabel(profile.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={() => void supabase.auth.signOut()}><LogOut size={15} /></button></div></div>
+        <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets, people, tickets..." /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /><span></span></button><div className="avatar avatar-light">{initials(profile.full_name)}</div></div></header>
+        <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets, people, tickets..." /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /><span></span></button><div className="avatar avatar-light">{initials(user.full_name)}</div></div></header>
 
         <div className="page-content">
           {loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
-            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} metrics={metrics} userName={profile.full_name} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenServiceDesk={() => showTab('Service desk')} />}
+            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} metrics={metrics} userName={user.full_name} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenServiceDesk={() => showTab('Service desk')} />}
             {activeTab === 'Assets' && <AssetsView assets={filteredAssets} onAdd={() => setAssetModalOpen(true)} query={query} />}
-            {activeTab === 'Procurement' && <ProcurementView requests={purchaseRequests} userName={profile.full_name} department={profile.department} onSaved={() => void loadData(true)} />}
+            {activeTab === 'Procurement' && <ProcurementView requests={purchaseRequests} userName={user.full_name} department={user.department} onSaved={() => void loadData(true)} />}
             {activeTab === 'Invoices' && <InvoicesView invoices={invoices} />}
-            {activeTab === 'Service desk' && <ServiceDeskView tickets={tickets} userName={profile.full_name} onSaved={() => void loadData(true)} />}
+            {activeTab === 'Service desk' && <ServiceDeskView tickets={tickets} userName={user.full_name} onSaved={() => void loadData(true)} />}
           </>}
         </div>
       </main>
-      {assetModalOpen && <AssetModal userName={profile.full_name} department={profile.department} onClose={() => setAssetModalOpen(false)} onSaved={() => { setAssetModalOpen(false); void loadData(true); }} />}
+      {assetModalOpen && <AssetModal userName={user.full_name} department={user.department} onClose={() => setAssetModalOpen(false)} onSaved={() => { setAssetModalOpen(false); void loadData(true); }} />}
       {refreshing && <div className="refresh-indicator"><Loader2 size={15} className="spin" /> Updating workspace</div>}
     </div>
   );
@@ -311,7 +276,7 @@ function ProcurementView({ requests, userName, department, onSaved }: { requests
 
 function InvoicesView({ invoices }: { invoices: Invoice[] }) {
   const [uploadOpen, setUploadOpen] = useState(false);
-  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Finance / AI processing</p><h1>Invoice queue</h1><p className="heading-copy">Review extracted values, exceptions, and three-way matching before payment.</p></div><button className="button button-primary" onClick={() => setUploadOpen(true)}><Plus size={17} /> Upload invoice</button></div><div className="stat-strip"><MiniStat label="In queue" value={invoices.filter((i) => i.status !== 'PROCESSED').length.toString()} tone="amber" /><MiniStat label="Needs review" value={invoices.filter((i) => i.status === 'UNDER_REVIEW' || i.status === 'ON_HOLD').length.toString()} tone="red" /><MiniStat label="Processed spend" value={compactMoney.format(invoices.filter((i) => i.status === 'PROCESSED').reduce((sum, invoice) => sum + Number(invoice.total), 0))} tone="teal" /></div><section className="panel table-panel full-panel"><InvoiceTable invoices={invoices} /></section>{uploadOpen && <InvoiceUploadModal onClose={() => setUploadOpen(false)} />}</div>;
+  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Finance / AI processing</p><h1>Invoice queue</h1><p className="heading-copy">Review extracted values, exceptions, and three-way matching before payment.</p></div><button className="button button-primary" onClick={() => setUploadOpen(true)}><Plus size={17} /> Upload invoice</button></div><div className="stat-strip"><MiniStat label="In queue" value={invoices.filter((invoice) => invoice.status !== 'PROCESSED').length.toString()} tone="amber" /><MiniStat label="Needs review" value={invoices.filter((invoice) => invoice.status === 'UNDER_REVIEW' || invoice.status === 'ON_HOLD').length.toString()} tone="red" /><MiniStat label="Processed spend" value={compactMoney.format(invoices.filter((invoice) => invoice.status === 'PROCESSED').reduce((sum, invoice) => sum + Number(invoice.total), 0))} tone="teal" /></div><section className="panel table-panel full-panel"><InvoiceTable invoices={invoices} /></section>{uploadOpen && <InvoiceUploadModal onClose={() => setUploadOpen(false)} />}</div>;
 }
 
 function ServiceDeskView({ tickets, userName, onSaved }: { tickets: Ticket[]; userName: string; onSaved: () => void }) {
@@ -341,50 +306,29 @@ function roleLabel(role: string) { return role.split('_').map((part) => part.cha
 
 function AuthLoading() { return <div className="auth-shell"><div className="auth-loading"><Loader2 size={24} className="spin" /><span>Preparing your secure workspace</span></div></div>; }
 
-function ProfileLoadError({ onRetry, onSignOut }: { onRetry: () => void; onSignOut: () => void }) {
-  return <div className="auth-shell"><div className="auth-panel"><div className="auth-panel-inner"><div className="state-card error-state"><CircleAlert size={25} /><strong>Workspace profile unavailable</strong><span>We could not load your workspace profile. Please try again or sign out and back in.</span><div className="modal-actions" style={{ justifyContent: 'center', gap: '12px', marginTop: '16px' }}><button className="button button-secondary" onClick={onSignOut}><LogOut size={16} /> Sign out</button><button className="button button-primary" onClick={onRetry}><RefreshCw size={16} /> Retry</button></div></div></div></div></div>;
-}
-
-function AuthScreen() {
+function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const signInWithGoogle = async () => {
-    setBusy(true);
-    setMessage('');
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-    if (error) {
-      setMessage('Google sign-in is not available right now. Please use your work email instead.');
-      setBusy(false);
-    }
-  };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true);
     setMessage('');
-    const result = mode === 'sign-in'
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
-    if (result.error) {
-      const msg = result.error.message.toLowerCase();
-      if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
-        setMessage('That email and password combination did not match. Please verify your credentials and try again.');
-      } else if (msg.includes('email not confirmed')) {
-        setMessage('Your email has not been confirmed yet. Please contact your workspace administrator.');
-      } else if (msg.includes('rate limit') || msg.includes('too many')) {
-        setMessage('Too many attempts. Please wait a moment before trying again.');
-      } else {
-        setMessage('We could not complete that request. Check your details and try again.');
-      }
-    } else if (mode === 'sign-up') {
-      setMessage('Your workspace account is ready. You can sign in now.');
+    try {
+      const user = mode === 'sign-in'
+        ? await auth.signIn(email, password)
+        : await auth.signUp(email, password, fullName);
+      onAuth(user);
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'We could not complete that request. Check your details and try again.');
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
-  return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control procurement, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form><div className="auth-divider"><span>or continue with</span></div><button type="button" className="button button-google" onClick={() => void signInWithGoogle()} disabled={busy}><Chrome size={16} /> Continue with Google</button><button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Bigbasket? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
+  return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control procurement, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form><button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Bigbasket? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
 }
 
 type InvoiceExtraction = {
@@ -411,29 +355,27 @@ function InvoiceUploadModal({ onClose }: { onClose: () => void }) {
     if (!file) return;
     setBusy(true);
     setMessage('');
+    let documentId: string | null = null;
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user?.id;
-      if (!userId) throw new Error('Sign in required');
       const dataUrl = await readAsDataUrl(file);
-      const buffer = await file.arrayBuffer();
-      const digest = await crypto.subtle.digest('SHA-256', buffer);
-      const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-      const storagePath = `${userId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
-      const upload = await supabase.storage.from('it-documents').upload(storagePath, file, { contentType: file.type, upsert: false });
-      if (upload.error) throw new Error('Upload failed');
-      const documentInsert = await supabase.from('app_documents').insert({ storage_path: storagePath, original_name: file.name, mime_type: file.type, file_size: file.size, sha256, document_type: 'INVOICE', extraction_status: 'EXTRACTING' }).select('id').maybeSingle();
-      if (documentInsert.error || !documentInsert.data) throw new Error('Document record failed');
-      const result = await supabase.functions.invoke('process-invoice', { body: { imageDataUrl: dataUrl, filename: file.name } });
-      if (result.error || !result.data?.extraction) {
-        await supabase.from('app_documents').update({ extraction_status: 'FAILED', review_reason: 'AI review was unavailable.' }).eq('id', documentInsert.data.id);
-        throw new Error('AI review failed');
+      const document = await api.upload<AppDocument>('/api/documents', file, { document_type: 'INVOICE' });
+      documentId = document.id;
+      const result = await api.post<{ extraction: InvoiceExtraction }>('/api/invoices/process', {
+        document_id: documentId,
+        imageDataUrl: dataUrl,
+        filename: file.name,
+      });
+      setExtraction(result.extraction);
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'We could not process this document. Check the file and try again.';
+      setMessage(errorMessage);
+      if (documentId) {
+        try {
+          await api.put(`/api/documents/${documentId}`, { extraction_status: 'FAILED', review_reason: errorMessage });
+        } catch {
+          // Document status update is best-effort.
+        }
       }
-      const data = result.data as { extraction: InvoiceExtraction };
-      setExtraction(data.extraction);
-      await supabase.from('app_documents').update({ extraction_status: data.extraction.confidence >= 85 && !data.extraction.review_reason ? 'VALIDATED' : 'NEEDS_REVIEW', extracted_fields: data.extraction, confidence: data.extraction.confidence, review_reason: data.extraction.review_reason }).eq('id', documentInsert.data.id);
-    } catch {
-      setMessage('We could not process this document. Check the file and try again.');
     } finally {
       setBusy(false);
     }
@@ -454,21 +396,14 @@ function AssetModal({ userName, department, onClose, onSaved }: { userName: stri
     event.preventDefault();
     setSaving(true);
     setError(null);
-    const { data: inserted, error } = await supabase.from('it_assets').insert({ ...form, purchase_cost: Number(form.purchase_cost), warranty_end: form.warranty_end || null, status: 'AVAILABLE', condition: 'NEW' }).select('id').single();
-    if (error || !inserted) {
+    try {
+      await api.post('/api/assets', { ...form, purchase_cost: Number(form.purchase_cost), warranty_end: form.warranty_end || null });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not add the asset. Please try again.');
+    } finally {
       setSaving(false);
-      setError(error?.message.toLowerCase().includes('duplicate') ? 'An asset with this tag already exists. Use a unique asset tag.' : 'Could not add the asset. Please try again.');
-      return;
     }
-    void (async () => {
-      try {
-        await supabase.from('it_asset_events').insert({ asset_id: inserted.id, event_type: 'REGISTERED', to_status: 'AVAILABLE', location: form.location, notes: 'Asset registered' });
-      } catch {
-        // Lifecycle logging is best-effort; the asset is already registered.
-      }
-    })();
-    setSaving(false);
-    onSaved();
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Asset register</p><h2>Add new asset</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label>Asset tag<input required value={form.asset_tag} onChange={(event) => update('asset_tag', event.target.value)} placeholder="IT-LAP-0007" /></label><label>Category<select value={form.category} onChange={(event) => update('category', event.target.value)}><option>Laptop</option><option>Monitor</option><option>Mobile</option><option>Network device</option><option>Server</option></select></label><label>Manufacturer<input required value={form.manufacturer} onChange={(event) => update('manufacturer', event.target.value)} placeholder="Dell" /></label><label>Model<input required value={form.model} onChange={(event) => update('model', event.target.value)} placeholder="Latitude 7450" /></label><label>Serial number<input required value={form.serial_number} onChange={(event) => update('serial_number', event.target.value)} placeholder="SN-000000" /></label><label>Department<input required value={form.department} onChange={(event) => update('department', event.target.value)} placeholder="Engineering" /></label><label>Custodian<input required value={form.custodian} onChange={(event) => update('custodian', event.target.value)} placeholder="Asset custodian" /></label><label>Location<input required value={form.location} onChange={(event) => update('location', event.target.value)} placeholder="HQ / Floor 1" /></label><label>Purchase cost<input required type="number" min="0" value={form.purchase_cost} onChange={(event) => update('purchase_cost', event.target.value)} placeholder="0" /></label><label>Warranty end<input type="date" value={form.warranty_end} onChange={(event) => update('warranty_end', event.target.value)} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Saving...' : 'Add asset'}</button></div></form></div>;
 }
@@ -484,13 +419,14 @@ function TicketModal({ userName, onClose, onSaved }: { userName: string; onClose
     event.preventDefault();
     setSaving(true);
     setError(null);
-    const { error } = await supabase.from('it_tickets').insert({ title: form.title, category: form.category, priority: form.priority, status: 'OPEN', assignee: form.assignee, requester: form.requester, due_label: ticketDueLabels[form.priority] });
-    setSaving(false);
-    if (error) {
-      setError('Could not create the ticket. Please try again.');
-      return;
+    try {
+      await api.post('/api/tickets', { title: form.title, category: form.category, priority: form.priority, assignee: form.assignee, requester: form.requester, due_label: ticketDueLabels[form.priority] });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create the ticket. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    onSaved();
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Service desk</p><h2>Create ticket</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label className="span-2">Title<input required value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="Describe the issue or request" /></label><label>Category<select value={form.category} onChange={(event) => update('category', event.target.value)}><option>Hardware</option><option>Software</option><option>Network</option><option>Access</option><option>Onboarding</option><option>Other</option></select></label><label>Priority<select value={form.priority} onChange={(event) => update('priority', event.target.value)}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Requester<input required value={form.requester} onChange={(event) => update('requester', event.target.value)} /></label><label>Assignee<input required value={form.assignee} onChange={(event) => update('assignee', event.target.value)} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Creating...' : 'Create ticket'}</button></div></form></div>;
 }
@@ -510,13 +446,14 @@ function PurchaseRequestModal({ userName, department, onClose, onSaved }: { user
       setError('Enter an estimated amount greater than zero.');
       return;
     }
-    const { error } = await supabase.from('it_purchase_requests').insert({ title: form.title, requester: form.requester, department: form.department, amount, status: 'PENDING_APPROVAL', needed_by: form.needed_by });
-    setSaving(false);
-    if (error) {
-      setError('Could not create the request. Please try again.');
-      return;
+    try {
+      await api.post('/api/purchase-requests', { title: form.title, requester: form.requester, department: form.department, amount, needed_by: form.needed_by });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create the request. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    onSaved();
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Procurement</p><h2>New purchase request</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label className="span-2">Title<input required value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="What do you need to purchase?" /></label><label>Requester<input required value={form.requester} onChange={(event) => update('requester', event.target.value)} /></label><label>Department<input required value={form.department} onChange={(event) => update('department', event.target.value)} /></label><label>Estimated amount (₹)<input required type="number" min="1" step="0.01" value={form.amount} onChange={(event) => update('amount', event.target.value)} placeholder="0" /></label><label>Needed by<input required type="date" min={new Date().toISOString().slice(0, 10)} value={form.needed_by} onChange={(event) => update('needed_by', event.target.value)} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Submitting...' : 'Submit request'}</button></div></form></div>;
 }

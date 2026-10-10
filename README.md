@@ -1,47 +1,57 @@
 # bigbasket ITAM
 
-Internal IT asset management workspace for Bigbasket — asset register, procurement, AI-assisted invoice review, and service desk, backed by Supabase.
+Internal IT asset management workspace for Bigbasket — asset register, procurement, AI-assisted invoice review, and service desk. Self-hosted: Node.js API + SQLite, no external backend services required.
 
 ## Stack
 
-- React 18 + TypeScript + Vite 5 + Tailwind CSS
-- Supabase: Auth (email + Google OAuth), Postgres with RLS, private storage, Edge Function
-- OpenAI (gpt-4o-mini) for invoice field extraction
+- **Frontend**: React 18 + TypeScript + Vite 5 + Tailwind CSS
+- **Backend**: Node.js + Express API server (`server/`)
+- **Database**: SQLite (`server-data/itam.db`) — file-based, zero-config
+- **Auth**: email + password with scrypt hashing and signed JWT sessions (7-day expiry)
+- **AI**: OpenAI (gpt-4o-mini) for invoice field extraction, called server-side
 
 ## Setup
 
-1. **Supabase project**
-   - Create a project and run all migrations in `supabase/migrations/` in order.
-   - The database ships with **no seed data** — the workspace starts empty and records are created through the app.
-   - Ensure the `it-documents` storage bucket exists (created by the workflow migration) and is private.
+```bash
+npm install
+npm run dev
+```
 
-2. **Environment**
-   - Copy `.env.example` to `.env` and fill in your project credentials:
-     - `VITE_SUPABASE_URL` — Project URL (Settings > API)
-     - `VITE_SUPABASE_ANON_KEY` — anon public key (Settings > API)
-   - Set the `OPENAI_API_KEY` secret on the `process-invoice` edge function (Supabase > Functions > Secrets). Invoice upload degrades gracefully to a review-failed state when the key is absent.
+`npm run dev` starts both the API server (port 3001) and the Vite dev server. The first account you create is automatically assigned the `admin` role; every later signup becomes `employee`.
 
-3. **Auth**
-   - The first account to sign up is automatically assigned the `admin` role; subsequent signups become `employee`.
-   - Enable Google as an OAuth provider in Supabase Auth settings if you want SSO.
+## Environment (`.env`)
 
-4. **Run**
-   ```bash
-   npm install
-   npm run dev
-   ```
+Copy `.env.example` to `.env`:
 
-5. **Verify**
-   ```bash
-   npm run lint
-   npm run typecheck
-   npm run build
-   ```
+- `PORT` — API server port (default 3001)
+- `VITE_API_URL` — API base URL used by the frontend
+- `JWT_SECRET` — strong random secret for session signing (generated for you in `.env`)
+- `DATA_DIR` — where the SQLite database and uploaded files live (git-ignored)
+- `OPENAI_API_KEY` — optional; invoice AI returns a clear "not configured" error when absent
 
 ## Roles
 
-`admin`, `it_asset_manager`, `procurement_officer`, `finance_officer`, `approver`, `employee`, `auditor` — enforced by Postgres RLS policies on every table. Write access is role-gated; audit, document, and lifecycle-event tables are append-only for clients.
+`admin`, `it_asset_manager`, `procurement_officer`, `finance_officer`, `approver`, `employee`, `auditor` — enforced by the API on every endpoint, mirroring the original row-level security model:
 
-## Edge function
+- **Read** operational data: any active signed-in user
+- **Assets**: write = admin / it_asset_manager, delete = admin
+- **Invoices**: write = admin / finance_officer, delete = admin
+- **Tickets**: create = any active user, update = admin / it_asset_manager, delete = admin
+- **Purchase requests**: create = admin / procurement_officer / employee, update = admin / procurement_officer / approver, delete = admin
+- **Documents**: private per-user; admin / finance_officer / auditor can read all
+- **Audit log**: admin / auditor read-only
 
-`supabase/functions/process-invoice` receives a data-URL image, extracts structured invoice fields with OpenAI, and returns a confidence score plus review reasons. Extraction results are stored on `app_documents` and routed to human review when confidence is below 85% or fields are missing.
+## Production notes
+
+- Record numbers (`TKT-000001…`, `PR-000001…`, `GR-000001…`) are issued by the server from sequences — clients never invent identifiers.
+- Asset registration automatically writes a `REGISTERED` lifecycle event.
+- Uploaded documents are stored under `DATA_DIR/uploads/` with SHA-256 checksums and are served only to permitted roles.
+- For production, run behind HTTPS, set a strong `JWT_SECRET`, restrict `DATA_DIR` permissions, and back up `server-data/`. To move to PostgreSQL later, the schema maps 1:1 (TEXT ids replace UUIDs, REAL replaces numeric, TEXT stores ISO timestamps/JSON).
+
+## Verify
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```

@@ -1,18 +1,24 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "bigbasket-itam",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k \"npm run dev:web\" \"npm run server\"",
+    "dev:web": "vite",
+    "server": "node --env-file=.env server/index.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "start": "npm run server"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.57.4",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "lucide-react": "^0.446.0",
+    "multer": "^2.4.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
