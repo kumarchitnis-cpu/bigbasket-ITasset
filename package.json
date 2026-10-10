@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k \"npm run dev:web\" \"npm run server\"",
     "dev:web": "vite",
-    "server": "node --env-file=.env server/index.js",
+    "server": "node server/index.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
