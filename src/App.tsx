@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import {
   Activity,
   ArrowDownRight,
@@ -30,7 +31,7 @@ import {
   Ticket,
   X,
 } from 'lucide-react';
-import { ApiError, api, auth, setOnUnauthorized, type AppDocument, type AppUser } from '@/lib/api';
+import { ApiError, api, auth, setOnUnauthorized, supabase, type AppDocument, type AppUser } from '@/lib/api';
 
 type Asset = {
   id: string;
@@ -114,9 +115,34 @@ function App() {
 
   useEffect(() => {
     setOnUnauthorized(() => {
-      auth.signOut();
       setUser(null);
     });
+
+    let mounted = true;
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      if (data.session) {
+        void auth.me().then(setUser).catch(() => null).finally(() => setAuthLoading(false));
+      } else {
+        setAuthLoading(false);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession: Session | null) => {
+      if (!mounted) return;
+      if (nextSession) {
+        void auth.me().then(setUser).catch(() => null).finally(() => setAuthLoading(false));
+      } else {
+        setUser(null);
+        setAuthLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const loadData = async (isRefresh = false) => {
@@ -125,29 +151,21 @@ function App() {
     setError(null);
     try {
       const [assetData, invoiceData, ticketData, requestData] = await Promise.all([
-        api.get<Asset[]>('/api/assets'),
-        api.get<Invoice[]>('/api/invoices'),
-        api.get<Ticket[]>('/api/tickets'),
-        api.get<PurchaseRequest[]>('/api/purchase-requests'),
+        api.getAssets(),
+        api.getInvoices(),
+        api.getTickets(),
+        api.getPurchaseRequests(),
       ]);
-      setAssets(assetData);
-      setInvoices(invoiceData);
-      setTickets(ticketData);
-      setPurchaseRequests(requestData);
+      setAssets(assetData as Asset[]);
+      setInvoices(invoiceData as Invoice[]);
+      setTickets(ticketData as Ticket[]);
+      setPurchaseRequests(requestData as PurchaseRequest[]);
     } catch {
       setError('We could not load the workspace data. Please try again.');
     }
     setLoading(false);
     setRefreshing(false);
   };
-
-  useEffect(() => {
-    auth
-      .me()
-      .then((currentUser) => setUser(currentUser))
-      .catch(() => null)
-      .finally(() => setAuthLoading(false));
-  }, []);
 
   useEffect(() => {
     if (user) void loadData();
@@ -180,7 +198,7 @@ function App() {
   };
 
   const signOut = () => {
-    auth.signOut();
+    void auth.signOut();
     setUser(null);
   };
 
@@ -358,20 +376,16 @@ function InvoiceUploadModal({ onClose }: { onClose: () => void }) {
     let documentId: string | null = null;
     try {
       const dataUrl = await readAsDataUrl(file);
-      const document = await api.upload<AppDocument>('/api/documents', file, { document_type: 'INVOICE' });
+      const document = await api.uploadDocument(file, 'INVOICE');
       documentId = document.id;
-      const result = await api.post<{ extraction: InvoiceExtraction }>('/api/invoices/process', {
-        document_id: documentId,
-        imageDataUrl: dataUrl,
-        filename: file.name,
-      });
-      setExtraction(result.extraction);
+      const result = await api.processInvoice(dataUrl, file.name, documentId);
+      setExtraction(result.extraction as InvoiceExtraction);
     } catch (err) {
       const errorMessage = err instanceof ApiError ? err.message : 'We could not process this document. Check the file and try again.';
       setMessage(errorMessage);
       if (documentId) {
         try {
-          await api.put(`/api/documents/${documentId}`, { extraction_status: 'FAILED', review_reason: errorMessage });
+          await api.updateDocument(documentId, { extraction_status: 'FAILED', review_reason: errorMessage });
         } catch {
           // Document status update is best-effort.
         }
@@ -397,7 +411,7 @@ function AssetModal({ userName, department, onClose, onSaved }: { userName: stri
     setSaving(true);
     setError(null);
     try {
-      await api.post('/api/assets', { ...form, purchase_cost: Number(form.purchase_cost), warranty_end: form.warranty_end || null });
+      await api.createAsset({ ...form, purchase_cost: Number(form.purchase_cost), warranty_end: form.warranty_end || null });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not add the asset. Please try again.');
@@ -420,7 +434,7 @@ function TicketModal({ userName, onClose, onSaved }: { userName: string; onClose
     setSaving(true);
     setError(null);
     try {
-      await api.post('/api/tickets', { title: form.title, category: form.category, priority: form.priority, assignee: form.assignee, requester: form.requester, due_label: ticketDueLabels[form.priority] });
+      await api.createTicket({ title: form.title, category: form.category, priority: form.priority, assignee: form.assignee, requester: form.requester, due_label: ticketDueLabels[form.priority] });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the ticket. Please try again.');
@@ -447,7 +461,7 @@ function PurchaseRequestModal({ userName, department, onClose, onSaved }: { user
       return;
     }
     try {
-      await api.post('/api/purchase-requests', { title: form.title, requester: form.requester, department: form.department, amount, needed_by: form.needed_by });
+      await api.createPurchaseRequest({ title: form.title, requester: form.requester, department: form.department, amount, needed_by: form.needed_by });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the request. Please try again.');

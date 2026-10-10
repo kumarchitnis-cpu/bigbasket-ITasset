@@ -4,21 +4,15 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"npm run dev:web\" \"npm run server\"",
-    "dev:web": "vite",
-    "server": "node --env-file=.env server/index.js",
+    "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "start": "npm run server"
+    "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
-    "concurrently": "^9.1.2",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
+    "@supabase/supabase-js": "^2.117.3",
     "lucide-react": "^0.446.0",
-    "multer": "^2.4.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
