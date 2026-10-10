@@ -122,10 +122,16 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
 
   const loadProfile = async (userId: string) => {
-    const { data } = await supabase.from('app_profiles').select('id, email, full_name, role, department, active').eq('id', userId).maybeSingle();
-    setProfile((data ?? null) as Profile | null);
+    const { data, error } = await supabase.from('app_profiles').select('id, email, full_name, role, department, active').eq('id', userId).maybeSingle();
+    if (error) {
+      setProfileError(true);
+    } else {
+      setProfileError(false);
+      setProfile((data ?? null) as Profile | null);
+    }
     setAuthLoading(false);
   };
 
@@ -165,11 +171,13 @@ function App() {
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       if (nextSession) {
+        setProfileError(false);
         void (async () => {
           await loadProfile(nextSession.user.id);
         })();
       } else {
         setProfile(null);
+        setProfileError(false);
         setAuthLoading(false);
       }
     });
@@ -209,7 +217,8 @@ function App() {
   };
 
   if (authLoading) return <AuthLoading />;
-  if (!session || !profile) return <AuthScreen />;
+  if (!session) return <AuthScreen />;
+  if (profileError || !profile) return <ProfileLoadError onRetry={() => { setProfileError(false); setAuthLoading(true); void loadProfile(session.user.id); }} onSignOut={() => void supabase.auth.signOut()} />;
 
   return (
     <div className="app-shell">
@@ -294,6 +303,10 @@ function roleLabel(role: string) { return role.split('_').map((part) => part.cha
 
 function AuthLoading() { return <div className="auth-shell"><div className="auth-loading"><Loader2 size={24} className="spin" /><span>Preparing your secure workspace</span></div></div>; }
 
+function ProfileLoadError({ onRetry, onSignOut }: { onRetry: () => void; onSignOut: () => void }) {
+  return <div className="auth-shell"><div className="auth-panel"><div className="auth-panel-inner"><div className="state-card error-state"><CircleAlert size={25} /><strong>Workspace profile unavailable</strong><span>We could not load your workspace profile. Please try again or sign out and back in.</span><div className="modal-actions" style={{ justifyContent: 'center', gap: '12px', marginTop: '16px' }}><button className="button button-secondary" onClick={onSignOut}><LogOut size={16} /> Sign out</button><button className="button button-primary" onClick={onRetry}><RefreshCw size={16} /> Retry</button></div></div></div></div></div>;
+}
+
 function AuthScreen() {
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [email, setEmail] = useState('kumar.chitnis@bigbasket.com');
@@ -317,8 +330,20 @@ function AuthScreen() {
     const result = mode === 'sign-in'
       ? await supabase.auth.signInWithPassword({ email, password })
       : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
-    if (result.error) setMessage('We could not complete that request. Check your details and try again.');
-    else if (mode === 'sign-up') setMessage('Your workspace account is ready. You can sign in now.');
+    if (result.error) {
+      const msg = result.error.message.toLowerCase();
+      if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
+        setMessage('That email and password combination did not match. Please verify your credentials and try again.');
+      } else if (msg.includes('email not confirmed')) {
+        setMessage('Your email has not been confirmed yet. Please contact your workspace administrator.');
+      } else if (msg.includes('rate limit') || msg.includes('too many')) {
+        setMessage('Too many attempts. Please wait a moment before trying again.');
+      } else {
+        setMessage('We could not complete that request. Check your details and try again.');
+      }
+    } else if (mode === 'sign-up') {
+      setMessage('Your workspace account is ready. You can sign in now.');
+    }
     setBusy(false);
   };
   return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control procurement, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Alex Morgan" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="kumar.chitnis@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form><div className="auth-divider"><span>or continue with</span></div><button type="button" className="button button-google" onClick={() => void signInWithGoogle()} disabled={busy}><Chrome size={16} /> Continue with Google</button><button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Bigbasket? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
