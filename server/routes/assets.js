@@ -23,6 +23,166 @@ router.get('/', (req, res, next) => {
   }
 });
 
+router.get('/:id/events', (req, res, next) => {
+  try {
+    const db = getDb();
+    if (!db.prepare('SELECT id FROM it_assets WHERE id = ?').get(req.params.id)) {
+      return res.status(404).json({ error: 'Asset not found.' });
+    }
+    const events = db.prepare(
+      `SELECT e.*, u.full_name AS actor_name
+       FROM it_asset_events e
+       JOIN users u ON u.id = e.actor_id
+       WHERE e.asset_id = ?
+       ORDER BY e.created_at DESC`,
+    ).all(req.params.id);
+    res.json(events);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/:id/events', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
+  const db = getDb();
+  let transactionStarted = false;
+  try {
+    const existing = db.prepare('SELECT * FROM it_assets WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Asset not found.' });
+
+    const body = req.body ?? {};
+    const eventType = String(body.event_type || '');
+    const now = nowIso();
+    const updates = { status: existing.status, custodian: existing.custodian, location: existing.location, condition: existing.condition };
+    let eventNotes = body.notes ? String(body.notes).trim() : null;
+    let maintenance = null;
+
+    const requireText = (value, name) => {
+      const text = typeof value === 'string' ? value.trim() : '';
+      if (!text) throw Object.assign(new Error(`${name} is required.`), { status: 400 });
+      return text;
+    };
+    const requireCurrentStatus = (...statuses) => {
+      if (!statuses.includes(existing.status)) {
+        throw Object.assign(new Error(`This action is not available while the asset is ${existing.status.toLowerCase().replace(/_/g, ' ')}.`), { status: 409 });
+      }
+    };
+
+    switch (eventType) {
+      case 'ASSIGNED':
+        requireCurrentStatus('AVAILABLE');
+        updates.status = 'ASSIGNED';
+        updates.custodian = requireText(body.custodian, 'custodian');
+        eventNotes ||= 'Asset assigned';
+        break;
+      case 'RETURNED':
+        requireCurrentStatus('ASSIGNED');
+        updates.status = 'AVAILABLE';
+        updates.custodian = requireText(body.custodian, 'receiving custodian');
+        eventNotes ||= 'Asset returned to inventory';
+        break;
+      case 'TRANSFERRED':
+        requireCurrentStatus('ASSIGNED');
+        updates.custodian = requireText(body.custodian, 'new custodian');
+        if (body.location !== undefined) updates.location = requireText(body.location, 'location');
+        eventNotes ||= 'Asset transferred';
+        break;
+      case 'MAINTENANCE_STARTED': {
+        requireCurrentStatus('AVAILABLE', 'ASSIGNED');
+        const priority = body.priority === undefined || body.priority === '' ? 'MEDIUM' : body.priority;
+        if (!['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority)) {
+          throw Object.assign(new Error('priority must be LOW, MEDIUM, HIGH, or URGENT.'), { status: 400 });
+        }
+        maintenance = {
+          issue: requireText(body.issue, 'issue'),
+          provider: typeof body.provider === 'string' && body.provider.trim() ? body.provider.trim() : 'In-house',
+          priority,
+        };
+        updates.status = 'UNDER_MAINTENANCE';
+        eventNotes = maintenance.issue;
+        break;
+      }
+      case 'MAINTENANCE_COMPLETED':
+        requireCurrentStatus('UNDER_MAINTENANCE');
+        maintenance = db.prepare(
+          `SELECT id FROM it_maintenance_records
+           WHERE asset_id = ? AND status IN ('OPEN', 'IN_PROGRESS')
+           ORDER BY created_at DESC LIMIT 1`,
+        ).get(existing.id);
+        if (!maintenance) {
+          throw Object.assign(new Error('No open maintenance record exists for this asset.'), { status: 409 });
+        }
+        updates.status = 'AVAILABLE';
+        eventNotes ||= 'Maintenance completed; asset returned to available inventory';
+        break;
+      case 'QUARANTINED':
+        requireCurrentStatus('AVAILABLE', 'ASSIGNED', 'UNDER_MAINTENANCE');
+        updates.status = 'QUARANTINED';
+        eventNotes = requireText(eventNotes, 'reason');
+        break;
+      case 'RETIRED':
+        requireCurrentStatus('AVAILABLE', 'ASSIGNED', 'UNDER_MAINTENANCE', 'QUARANTINED');
+        updates.status = 'RETIRED';
+        eventNotes = requireText(eventNotes, 'reason');
+        break;
+      case 'AUDITED':
+        updates.condition = body.condition === undefined ? existing.condition : body.condition;
+        if (!CONDITIONS.includes(updates.condition)) {
+          throw Object.assign(new Error(`condition must be one of: ${CONDITIONS.join(', ')}`), { status: 400 });
+        }
+        eventNotes = requireText(eventNotes, 'audit notes');
+        break;
+      default:
+        return res.status(400).json({ error: 'event_type must be a supported asset lifecycle action.' });
+    }
+
+    db.exec('BEGIN IMMEDIATE');
+    transactionStarted = true;
+    db.prepare(
+      `UPDATE it_assets
+       SET status = ?, custodian = ?, location = ?, condition = ?,
+           last_audited_at = CASE WHEN ? = 'AUDITED' THEN ? ELSE last_audited_at END,
+           updated_at = ?
+       WHERE id = ?`,
+    ).run(updates.status, updates.custodian, updates.location, updates.condition, eventType, now, now, existing.id);
+
+    if (eventType === 'MAINTENANCE_STARTED') {
+      db.prepare(
+        `INSERT INTO it_maintenance_records
+         (id, asset_id, issue, provider, status, priority, created_by, created_at)
+         VALUES (?, ?, ?, ?, 'OPEN', ?, ?, ?)`,
+      ).run(newId(), existing.id, maintenance.issue, maintenance.provider, maintenance.priority, req.user.id, now);
+    } else if (eventType === 'MAINTENANCE_COMPLETED') {
+      db.prepare(
+        `UPDATE it_maintenance_records
+         SET status = 'COMPLETED', completed_at = ?
+         WHERE id = ?`,
+      ).run(now, maintenance.id);
+    } else if (eventType === 'QUARANTINED' || eventType === 'RETIRED') {
+      db.prepare(
+        `UPDATE it_maintenance_records
+         SET status = 'CANCELLED', completed_at = ?
+         WHERE asset_id = ? AND status IN ('OPEN', 'IN_PROGRESS')`,
+      ).run(now, existing.id);
+    }
+
+    db.prepare(
+      `INSERT INTO it_asset_events
+       (id, asset_id, event_type, from_status, to_status, from_custodian, to_custodian, location, notes, actor_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      newId(), existing.id, eventType, existing.status, updates.status, existing.custodian,
+      updates.custodian, updates.location, eventNotes, req.user.id, now,
+    );
+    audit(req.user.id, eventType, 'asset', existing.id, 'SUCCESS', eventNotes);
+    db.exec('COMMIT');
+    transactionStarted = false;
+    res.json(db.prepare('SELECT * FROM it_assets WHERE id = ?').get(existing.id));
+  } catch (e) {
+    if (transactionStarted) db.exec('ROLLBACK');
+    next(e);
+  }
+});
+
 router.post('/', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
   try {
     const body = req.body ?? {};
@@ -66,6 +226,12 @@ router.put('/:id', requireRole('admin', 'it_asset_manager'), (req, res, next) =>
     const updates = {};
     for (const field of WRITABLE) {
       if (field in body) updates[field] = body[field];
+    }
+    if (updates.status && updates.status !== existing.status) {
+      return res.status(400).json({ error: 'Use an asset lifecycle action to change status so the change is recorded.' });
+    }
+    if (updates.custodian && updates.custodian !== existing.custodian) {
+      return res.status(400).json({ error: 'Use an asset lifecycle action to change custodian so the change is recorded.' });
     }
     if (updates.status && !STATUSES.includes(updates.status)) {
       return res.status(400).json({ error: `status must be one of: ${STATUSES.join(', ')}` });

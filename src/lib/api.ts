@@ -66,6 +66,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+async function requestDownload(path: string): Promise<Blob> {
+  const token = localStorage.getItem('itam_token');
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (response.status === 401) {
+    localStorage.removeItem('itam_token');
+    unauthorizedHandler?.();
+    throw new ApiError(401, 'Your session expired. Please sign in again.');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new ApiError(response.status, (data as { error?: string } | null)?.error ?? 'Download failed.');
+  }
+  return response.blob();
+}
+
 export const api = {
   get<T>(path: string) {
     return request<T>(path);
@@ -78,6 +95,12 @@ export const api = {
   },
   put<T>(path: string, body: unknown) {
     return request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+  },
+  patch<T>(path: string, body: unknown) {
+    return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
+  },
+  download(path: string) {
+    return requestDownload(path);
   },
   del<T>(path: string) {
     return request<T>(path, { method: 'DELETE' });

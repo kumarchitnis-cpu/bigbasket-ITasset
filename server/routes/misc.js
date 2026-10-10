@@ -48,9 +48,8 @@ router.put('/profiles/:id', (req, res, next) => {
         .run(...keys.map((k) => updates[k]), req.user.id);
     }
     audit(req.user.id, 'UPDATE', 'profile', req.user.id, 'SUCCESS');
-    res.json(
-      getDb().prepare('SELECT id, email, full_name, role, department, active FROM users WHERE id = ?').get(req.user.id),
-    );
+    const profile = getDb().prepare('SELECT id, email, full_name, role, department, active FROM users WHERE id = ?').get(req.user.id);
+    res.json({ ...profile, active: !!profile.active });
   } catch (e) {
     next(e);
   }
