@@ -339,7 +339,7 @@ function AuthScreen() {
       } else if (msg.includes('rate limit') || msg.includes('too many')) {
         setMessage('Too many attempts. Please wait a moment before trying again.');
       } else {
-        setMessage('We could not complete that request. Check your details and try again.');
+        setMessage(`Sign-in error: ${result.error.message}`);
       }
     } else if (mode === 'sign-up') {
       setMessage('Your workspace account is ready. You can sign in now.');
