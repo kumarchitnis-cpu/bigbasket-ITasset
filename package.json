@@ -21,7 +21,8 @@
     "lucide-react": "^0.446.0",
     "multer": "^2.4.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "xlsx-populate": "^1.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

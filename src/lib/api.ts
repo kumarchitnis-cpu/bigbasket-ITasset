@@ -52,7 +52,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });
 
-  if (response.status === 401) {
+  const isSignInRequest = /^\/api\/auth\/(signin|signup|google)$/.test(path);
+  if (response.status === 401 && !isSignInRequest) {
     localStorage.removeItem('itam_token');
     unauthorizedHandler?.();
     throw new ApiError(401, 'Your session expired. Please sign in again.');

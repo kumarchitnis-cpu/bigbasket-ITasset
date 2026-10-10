@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me';
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 if (!process.env.JWT_SECRET) {
   console.warn('WARNING: JWT_SECRET is not set. Set a strong secret in .env before production use.');
 }
@@ -25,19 +26,19 @@ function base64url(value) {
   return Buffer.from(value).toString('base64url');
 }
 
-export function signToken(user) {
+export function signToken(user, hostname) {
   const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
-  const payload = base64url(
-    JSON.stringify({ sub: user.id, email: user.email, role: user.role, iat: now, exp: now + 7 * 24 * 60 * 60 }),
-  );
+  const claims = { sub: user.id, email: user.email, role: user.role, iat: now };
+  if (!LOCAL_HOSTS.has(hostname)) claims.exp = now + 7 * 24 * 60 * 60;
+  const payload = base64url(JSON.stringify(claims));
   const signature = createHmac('sha256', JWT_SECRET)
     .update(`${header}.${payload}`)
     .digest('base64url');
   return `${header}.${payload}.${signature}`;
 }
 
-export function verifyToken(token) {
+export function verifyToken(token, hostname) {
   if (typeof token !== 'string') return null;
   const [headerB64, payloadB64, signature] = token.split('.');
   if (!headerB64 || !payloadB64 || !signature) return null;
@@ -49,7 +50,11 @@ export function verifyToken(token) {
   if (expectedBuf.length !== givenBuf.length || !timingSafeEqual(expectedBuf, givenBuf)) return null;
   try {
     const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
-    if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    if (typeof payload.exp === 'number') {
+      if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    } else if (payload.exp !== undefined || !LOCAL_HOSTS.has(hostname)) {
+      return null;
+    }
     return payload;
   } catch {
     return null;

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import multer from 'multer';
+import XlsxPopulate from 'xlsx-populate';
 import { audit, getDb, newId, nowIso } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
 
@@ -8,6 +10,207 @@ router.use(requireAuth);
 const STATUSES = ['ASSIGNED', 'AVAILABLE', 'UNDER_MAINTENANCE', 'QUARANTINED', 'RETIRED'];
 const CONDITIONS = ['NEW', 'GOOD', 'DAMAGED'];
 const WRITABLE = ['asset_tag', 'category', 'manufacturer', 'model', 'serial_number', 'status', 'condition', 'custodian', 'location', 'department', 'purchase_cost', 'warranty_start', 'warranty_end', 'purchase_order'];
+const ASSET_IMPORT_COLUMNS = [
+  { key: 'asset_tag', header: 'Asset Tag', required: true },
+  { key: 'category', header: 'Category', required: true },
+  { key: 'manufacturer', header: 'Manufacturer', required: true },
+  { key: 'model', header: 'Model', required: true },
+  { key: 'serial_number', header: 'Serial Number', required: true },
+  { key: 'custodian', header: 'Custodian', required: true },
+  { key: 'location', header: 'Location', required: true },
+  { key: 'department', header: 'Department', required: true },
+  { key: 'purchase_cost', header: 'Purchase Cost' },
+  { key: 'warranty_start', header: 'Warranty Start' },
+  { key: 'warranty_end', header: 'Warranty End' },
+  { key: 'purchase_order', header: 'Purchase Order' },
+];
+const assetUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const MAX_IMPORT_ROWS = 1000;
+
+async function templateWorkbook() {
+  const workbook = await XlsxPopulate.fromBlankAsync();
+  const sheet = workbook.sheet(0).name('Assets');
+  const lastColumn = String.fromCharCode(64 + ASSET_IMPORT_COLUMNS.length);
+  sheet.range(`A1:${lastColumn}1`).value([ASSET_IMPORT_COLUMNS.map(({ header }) => header)]);
+  sheet.range(`A1:${lastColumn}1`).style({ bold: true, fill: '1F5874', fontColor: 'FFFFFF' });
+  sheet.autoFilter(sheet.range(`A1:${lastColumn}1`));
+  ASSET_IMPORT_COLUMNS.forEach(({ header }, index) => {
+    const column = String.fromCharCode(65 + index);
+    sheet.column(column).width(Math.max(header.length + 4, 18));
+  });
+  for (const key of ['warranty_start', 'warranty_end']) {
+    const index = ASSET_IMPORT_COLUMNS.findIndex((column) => column.key === key);
+    sheet.column(String.fromCharCode(65 + index)).style('numberFormat', 'yyyy-mm-dd');
+  }
+  return workbook;
+}
+
+function cellString(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') throw new Error('Rich-text cells are not supported.');
+  return String(value).trim();
+}
+
+function cellDate(value, rowNumber, label, errors) {
+  if (value === null || value === undefined || value === '') return null;
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 1) {
+      errors.push(`Row ${rowNumber}: ${label} must be a valid date (YYYY-MM-DD).`);
+      return null;
+    }
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000);
+    return date.toISOString().slice(0, 10);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    errors.push(`Row ${rowNumber}: ${label} must be a valid date (YYYY-MM-DD).`);
+    return null;
+  }
+  const date = new Date(`${text}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    errors.push(`Row ${rowNumber}: ${label} must be a valid date (YYYY-MM-DD).`);
+    return null;
+  }
+  const normalized = date.toISOString().slice(0, 10);
+  if (text && normalized !== text) {
+    errors.push(`Row ${rowNumber}: ${label} must be a valid date (YYYY-MM-DD).`);
+    return null;
+  }
+  return normalized;
+}
+
+router.get('/template', requireRole('admin', 'it_asset_manager'), async (req, res, next) => {
+  try {
+    const workbook = await templateWorkbook();
+    const buffer = await workbook.outputAsync();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="asset-import-template.xlsx"');
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/import', requireRole('admin', 'it_asset_manager'), assetUpload.single('file'), async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ error: 'Select an .xlsx file to upload.' });
+  if (!req.file.originalname.toLowerCase().endsWith('.xlsx')) {
+    return res.status(400).json({ error: 'Only Excel .xlsx files are supported.' });
+  }
+
+  try {
+    const workbook = await XlsxPopulate.fromDataAsync(req.file.buffer);
+    const sheet = workbook.sheet(0);
+    const usedRange = sheet.usedRange();
+    if (!usedRange) return res.status(400).json({ error: 'The workbook does not contain an asset worksheet.' });
+    const values = usedRange.value();
+    if (!values.length) return res.status(400).json({ error: 'The workbook does not contain an asset worksheet.' });
+    const headerValues = values[0];
+    const headerMap = new Map();
+    for (let column = 0; column < headerValues.length; column += 1) {
+      const header = cellString(headerValues[column]).toLowerCase();
+      if (header) headerMap.set(header, column);
+    }
+    const missing = ASSET_IMPORT_COLUMNS.filter(({ header, required }) => required && !headerMap.has(header.toLowerCase()));
+    if (missing.length) {
+      return res.status(400).json({ error: `Missing required columns: ${missing.map(({ header }) => header).join(', ')}.` });
+    }
+    const unknown = [...headerMap.keys()].filter((header) => !ASSET_IMPORT_COLUMNS.some(({ header: known }) => known.toLowerCase() === header));
+    if (unknown.length) {
+      return res.status(400).json({ error: `Unknown columns: ${unknown.join(', ')}. Download the template and use its column names.` });
+    }
+
+    const rows = [];
+    const errors = [];
+    const seenTags = new Set();
+    let assetRowCount = 0;
+    for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+      const row = values[rowIndex];
+      const rowNumber = rowIndex + 1;
+      if (row.every((value) => value === null || value === undefined || value === '')) continue;
+      assetRowCount += 1;
+      if (assetRowCount > MAX_IMPORT_ROWS) {
+        errors.push(`The file exceeds the ${MAX_IMPORT_ROWS}-asset upload limit.`);
+        break;
+      }
+
+      const data = {};
+      for (const { key, header } of ASSET_IMPORT_COLUMNS) {
+        const column = headerMap.get(header.toLowerCase());
+        const value = column !== undefined ? row[column] : null;
+        try {
+          if (column !== undefined && sheet.cell(rowNumber, column + 1).formula()) {
+            throw new Error('formula cells are not supported.');
+          }
+          data[key] = key === 'warranty_start' || key === 'warranty_end'
+            ? cellDate(value, rowNumber, header, errors)
+            : cellString(value);
+        } catch (error) {
+          errors.push(`Row ${rowNumber}: ${header} ${error.message}`);
+        }
+      }
+      for (const { key, header } of ASSET_IMPORT_COLUMNS.filter((column) => column.required)) {
+        if (!data[key]) errors.push(`Row ${rowNumber}: ${header} is required.`);
+      }
+      const costValue = data.purchase_cost;
+      data.purchase_cost = costValue === '' ? 0 : Number(costValue);
+      if (!Number.isFinite(data.purchase_cost) || data.purchase_cost < 0) {
+        errors.push(`Row ${rowNumber}: Purchase Cost must be a number greater than or equal to zero.`);
+      }
+      if (data.warranty_start && data.warranty_end && data.warranty_end < data.warranty_start) {
+        errors.push(`Row ${rowNumber}: Warranty End must be on or after Warranty Start.`);
+      }
+      const normalizedTag = data.asset_tag.toLowerCase();
+      if (normalizedTag && seenTags.has(normalizedTag)) errors.push(`Row ${rowNumber}: Asset Tag duplicates another row in this file.`);
+      if (normalizedTag) seenTags.add(normalizedTag);
+      rows.push({ rowNumber, data });
+    }
+    if (!rows.length && !errors.length) errors.push('The worksheet has no asset rows.');
+    if (errors.length) return res.status(400).json({ error: errors.slice(0, 20).join('\n') });
+
+    const db = getDb();
+    const existingTags = db.prepare('SELECT lower(asset_tag) AS asset_tag FROM it_assets').all();
+    const existingTagSet = new Set(existingTags.map(({ asset_tag }) => asset_tag));
+    for (const { rowNumber, data } of rows) {
+      if (existingTagSet.has(data.asset_tag.toLowerCase())) {
+        errors.push(`Row ${rowNumber}: Asset Tag "${data.asset_tag}" already exists.`);
+      }
+    }
+    if (errors.length) return res.status(409).json({ error: errors.slice(0, 20).join('\n') });
+
+    const now = nowIso();
+    const insertAsset = db.prepare(
+      `INSERT INTO it_assets (id, asset_tag, category, manufacturer, model, serial_number, status, condition, custodian, location, purchase_cost, warranty_start, warranty_end, purchase_order, department, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'AVAILABLE', 'NEW', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertEvent = db.prepare(
+      `INSERT INTO it_asset_events (id, asset_id, event_type, to_status, location, notes, actor_id, created_at)
+       VALUES (?, ?, 'REGISTERED', 'AVAILABLE', ?, 'Asset registered by spreadsheet import', ?, ?)`,
+    );
+    db.exec('BEGIN');
+    try {
+      for (const { data } of rows) {
+        const id = newId();
+        insertAsset.run(
+          id, data.asset_tag, data.category, data.manufacturer, data.model, data.serial_number,
+          data.custodian, data.location, data.purchase_cost, data.warranty_start, data.warranty_end,
+          data.purchase_order || null, data.department, now, now,
+        );
+        insertEvent.run(newId(), id, data.location, req.user.id, now);
+        audit(req.user.id, 'CREATE', 'asset', id, 'SUCCESS', 'Imported from asset spreadsheet');
+      }
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    res.status(201).json({ imported: rows.length });
+  } catch (error) {
+    if (error instanceof Error && (error.message.includes('Corrupted zip') || error.message.includes('End of data reached') || error.message.includes('Invalid ZIP'))) {
+      return res.status(400).json({ error: 'Could not read the Excel workbook. Upload a valid .xlsx file.' });
+    }
+    next(error);
+  }
+});
 
 router.get('/', (req, res, next) => {
   try {
@@ -178,7 +381,10 @@ router.post('/:id/events', requireRole('admin', 'it_asset_manager'), (req, res, 
     transactionStarted = false;
     res.json(db.prepare('SELECT * FROM it_assets WHERE id = ?').get(existing.id));
   } catch (e) {
-    if (transactionStarted) db.exec('ROLLBACK');
+    if (transactionStarted)     db.exec('ROLLBACK');
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'An asset tag was registered during this upload. No assets were imported; please retry.' });
+    }
     next(e);
   }
 });

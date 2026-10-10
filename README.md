@@ -7,7 +7,7 @@ Internal IT asset management workspace for Bigbasket — asset register and life
 - **Frontend**: React 18 + TypeScript + Vite 5 + Tailwind CSS
 - **Backend**: Node.js + Express API server (`server/`)
 - **Database**: SQLite (`server-data/itam.db`) — file-based, zero-config
-- **Auth**: email + password with scrypt hashing and signed JWT sessions (7-day expiry), plus Google Identity Services sign-in
+- **Auth**: email + password with scrypt hashing and signed JWT sessions (7-day expiry outside localhost; no expiry on localhost), plus Google Identity Services sign-in
 - **AI**: OpenAI (gpt-4o-mini) for invoice field extraction and aggregate-only operational Q&A, called server-side
 
 ## Setup
@@ -54,6 +54,7 @@ Copy `.env.example` to `.env`:
 - **Render API deployment**: create a new Blueprint from this repository and use `render.yaml`. It provisions the Express API on Node 22 with a 1 GB persistent disk mounted at `/var/data`; SQLite and uploads are stored there. The blueprint generates `JWT_SECRET`. Set `GOOGLE_CLIENT_ID` and `OPENAI_API_KEY` in Render only if those services are configured. After deployment, verify `https://<service>.onrender.com/api/health` returns `{"ok":true,"service":"itam-api"}`. Add the API origin to the frontend's `VITE_API_URL` build setting, and set `VITE_GOOGLE_CLIENT_ID` to the same Google client ID if enabling browser Google sign-in; then rebuild and redeploy the Bolt frontend. Persistent-disk plans are required; without the disk, SQLite data and uploaded documents will not survive instance replacement.
 - Record numbers (`TKT-000001…`, `PR-000001…`, `GR-000001…`) are issued by the server from sequences — clients never invent identifiers.
 - Asset registration and lifecycle actions write timestamped events with the acting user. Asset managers can assign, return, transfer, quarantine, retire, audit, and record maintenance start/completion from the asset history.
+- Admins and asset managers can bulk-register assets from the Asset register using the downloadable Excel template. Imports validate the complete `.xlsx` file and reject invalid rows or duplicate asset tags before saving any assets.
 - Lifecycle status and custodian changes use the asset event endpoint so they cannot bypass the history record; audit and maintenance updates are committed together with the asset change.
 - Employee equipment requests have their own approval queue and notify asset managers. Write-offs require admin review; approval retires the asset and adds a traceable lifecycle event.
 - Inventory shows available registered assets alongside goods receipt history. The warranty register derives coverage from the warranty dates stored on assets.

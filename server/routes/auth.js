@@ -35,7 +35,7 @@ router.post('/signup', (req, res, next) => {
     ).run(id, normalized, full_name ? String(full_name).trim() : 'Workspace user', hashPassword(password), role, 'General');
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     audit(id, 'SIGNUP', 'user', id, 'SUCCESS');
-    res.status(201).json({ token: signToken(user), user: publicUser(user) });
+    res.status(201).json({ token: signToken(user, req.hostname), user: publicUser(user) });
   } catch (e) {
     next(e);
   }
@@ -54,7 +54,7 @@ router.post('/signin', (req, res, next) => {
       return res.status(401).json({ error: 'Your account is inactive. Contact your workspace administrator.' });
     }
     audit(user.id, 'SIGNIN', 'user', user.id, 'SUCCESS');
-    res.json({ token: signToken(user), user: publicUser(user) });
+    res.json({ token: signToken(user, req.hostname), user: publicUser(user) });
   } catch (e) {
     next(e);
   }
@@ -111,7 +111,7 @@ router.post('/google', async (req, res, next) => {
       return res.status(401).json({ error: 'The Google account email no longer matches this workspace account.' });
     }
     audit(user.id, 'GOOGLE_SIGNIN', 'user', user.id, 'SUCCESS');
-    return res.json({ token: signToken(user), user: publicUser(user) });
+    return res.json({ token: signToken(user, req.hostname), user: publicUser(user) });
   } catch (error) {
     return next(error);
   }

@@ -32,6 +32,7 @@ import {
   Sparkles,
   Tag,
   Ticket,
+  Upload,
   Users,
   UserMinus,
   UserPlus,
@@ -249,6 +250,7 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -281,6 +283,7 @@ function App() {
       } else if (event.key === 'Escape') {
         setSearchOpen(false);
         setUserMenuOpen(false);
+        setGuideOpen(false);
         searchInputRef.current?.blur();
       }
     };
@@ -412,7 +415,7 @@ function App() {
         <div className="workspace-switcher"><img className="workspace-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="workspace-copy"><span>Bigbasket</span><small>Operations workspace</small></div><ChevronDown size={15} /></div>
         <div className="nav-section-label">Workspace</div>
         <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => label !== 'User Management' || user.role === 'admin').map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
-        <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
+        <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button onClick={() => setGuideOpen(true)}>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
       <main className="main-area">
@@ -436,8 +439,40 @@ function App() {
           </>}
         </div>
       </main>
+      {guideOpen && <OperationsGuide isAdmin={user.role === 'admin'} onClose={() => setGuideOpen(false)} onNavigate={(tab) => { setGuideOpen(false); showTab(tab); }} />}
       {assetModalOpen && <AssetModal userName={user.full_name} department={user.department} onClose={() => setAssetModalOpen(false)} onSaved={() => { setAssetModalOpen(false); void loadData(true); }} />}
       {refreshing && <div className="refresh-indicator"><Loader2 size={15} className="spin" /> Updating workspace</div>}
+    </div>
+  );
+}
+
+function OperationsGuide({ isAdmin, onClose, onNavigate }: { isAdmin: boolean; onClose: () => void; onNavigate: (tab: Tab) => void }) {
+  const sections: { title: string; description: string; tab: Tab; link: string }[] = [
+    { title: 'Assets', description: 'Browse the asset register and track assignment, return, transfer, audit, and maintenance activity.', tab: 'Assets', link: 'Go to assets' },
+    { title: 'Employee equipment', description: 'Employees can submit equipment requests; asset managers and admins can review pending requests.', tab: 'Emp Asset Mgmt', link: 'Open equipment requests' },
+    { title: 'Procurement and invoices', description: 'Track purchase requests in Procurement. Finance officers and admins can manage invoices and review extracted details.', tab: 'Procurement', link: 'Open procurement' },
+    { title: 'Inventory and warranties', description: 'Review goods receipts and available assets in Inventory, or check coverage in Warranties.', tab: 'Inventory', link: 'Open inventory' },
+    { title: 'Service desk', description: 'Create and follow support tickets, including priority, assignment, and resolution status.', tab: 'Service desk', link: 'Open service desk' },
+    { title: 'Roles and access', description: 'Available actions depend on your workspace role. Admins can manage users and assign roles from User Management.', tab: 'User Management', link: 'Manage users' },
+  ];
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="modal-card guide-modal" role="dialog" aria-modal="true" aria-labelledby="operations-guide-title">
+        <div className="modal-header">
+          <div><p className="eyebrow">Help center</p><h2 id="operations-guide-title">Operations guide</h2></div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close operations guide"><X size={18} /></button>
+        </div>
+        <p className="guide-intro">Quick tips for common workflows in your Bigbasket operations workspace.</p>
+        <div className="guide-sections">
+          {sections.filter(({ tab }) => tab !== 'User Management' || isAdmin).map(({ title, description, tab, link }) => (
+            <article className="guide-section" key={title}>
+              <div><h3>{title}</h3><p>{description}</p></div>
+              <button type="button" className="guide-link" onClick={() => onNavigate(tab)}>{link}<ArrowUpRight size={13} /></button>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -572,6 +607,7 @@ function DashboardTrend({ values, color }: { values: { date: string; label: stri
 function AssetsView({ assets, user, onAdd, onRefresh, query }: { assets: Asset[]; user: AppUser; onAdd: () => void; onRefresh: () => void; query: string }) {
   const [statusFilter, setStatusFilter] = useState<'ALL' | Asset['status']>('ALL');
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const canManage = user.role === 'admin' || user.role === 'it_asset_manager';
   const counts = useMemo(() => ({
     ALL: assets.length,
@@ -590,7 +626,63 @@ function AssetsView({ assets, user, onAdd, onRefresh, query }: { assets: Asset[]
     { key: 'QUARANTINED', label: 'Quarantined' },
     { key: 'RETIRED', label: 'Retired' },
   ];
-  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div>{canManage && <button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button>}</div><div className="subnav-row"><div className="tab-pills">{pills.map(({ key, label }) => <button key={key} className={statusFilter === key ? 'selected' : ''} onClick={() => setStatusFilter(key)}>{label} <span>{counts[key]}</span></button>)}</div><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}</div>;
+  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div>{canManage && <div className="heading-actions"><button className="button button-secondary" onClick={() => setUploadOpen(true)}><Upload size={16} /> Upload Excel</button><button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button></div>}</div><div className="subnav-row"><div className="tab-pills">{pills.map(({ key, label }) => <button key={key} className={statusFilter === key ? 'selected' : ''} onClick={() => setStatusFilter(key)}>{label} <span>{counts[key]}</span></button>)}</div><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}{uploadOpen && <AssetImportModal onClose={() => setUploadOpen(false)} onSaved={onRefresh} />}</div>;
+}
+
+function AssetImportModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [imported, setImported] = useState<number | null>(null);
+
+  const downloadTemplate = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const blob = await api.download('/api/assets/template');
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'asset-import-template.xlsx';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not download the asset template.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.upload<{ imported: number }>('/api/assets/import', file);
+      setImported(result.imported);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not import the asset spreadsheet.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <form className="modal-card asset-import-card" onSubmit={submit}>
+      <div className="modal-header"><div><p className="eyebrow">Asset register</p><h2>Upload assets from Excel</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div>
+      <p className="import-help">Download the template, fill in one asset per row, then upload the completed .xlsx file. Asset Tag, Category, Manufacturer, Model, Serial Number, Custodian, Location, and Department are required. New assets are added as Available and in New condition. The whole file is validated before anything is imported.</p>
+      <button type="button" className="button button-secondary template-download" onClick={() => void downloadTemplate()} disabled={downloading || busy}><Download size={16} />{downloading ? 'Preparing template...' : 'Download Template'}</button>
+      {imported === null && <label className="import-file-label">Excel workbook (.xlsx)<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={(event) => { setFile(event.target.files?.[0] ?? null); setError(null); }} /></label>}
+      {error && <div className="auth-message import-error">{error}</div>}
+      {imported !== null && <div className="import-success" role="status">Successfully imported {imported} {imported === 1 ? 'asset' : 'assets'}.</div>}
+      <div className="modal-actions">
+        {imported !== null ? <button type="button" className="button button-primary" onClick={onClose}>Done</button> : <><button type="button" className="button button-secondary" disabled={busy} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!file || busy}>{busy ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}{busy ? 'Uploading...' : 'Upload'}</button></>}
+      </div>
+    </form>
+  </div>;
 }
 
 function ProcurementView({ requests, userName, department, onSaved }: { requests: PurchaseRequest[]; userName: string; department: string; onSaved: () => void }) {
@@ -824,6 +916,9 @@ function UserManagementView({ currentUser }: { currentUser: AppUser }) {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [busyUser, setBusyUser] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [accountFilter, setAccountFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -880,22 +975,45 @@ function UserManagementView({ currentUser }: { currentUser: AppUser }) {
     }
   };
 
+  const visibleUsers = users.filter((managedUser) => {
+    const term = search.trim().toLowerCase();
+    const matchesSearch = !term || [managedUser.full_name, managedUser.email, managedUser.department]
+      .some((value) => value.toLowerCase().includes(term));
+    const matchesRole = roleFilter === 'ALL' || managedUser.role === roleFilter;
+    const matchesStatus = accountFilter === 'ALL' || (accountFilter === 'ACTIVE' ? managedUser.active : !managedUser.active);
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+  const activeUsers = users.filter((managedUser) => managedUser.active).length;
+  const inactiveUsers = users.length - activeUsers;
+  const adminUsers = users.filter((managedUser) => managedUser.role === 'admin').length;
+
   return <div className="fade-in">
     <PageTitle eyebrow="Workspace / Administration" title="User Management" copy="Manage workspace accounts, role assignments, and access." action="Add User" icon={UserPlus} onAction={() => { setFormError(null); setModalOpen(true); }} />
+    <div className="stat-strip user-management-stats">
+      <MiniStat label="Total accounts" value={users.length.toString()} tone="blue" />
+      <MiniStat label="Active" value={activeUsers.toString()} tone="teal" />
+      <MiniStat label="Inactive" value={inactiveUsers.toString()} tone="red" />
+      <MiniStat label="Administrators" value={adminUsers.toString()} tone="amber" />
+    </div>
     <section className="panel user-management-panel">
-      <PanelHeader title="Workspace users" subtitle={`${users.length} account${users.length === 1 ? '' : 's'} · Role changes take effect immediately`} />
+      <PanelHeader title="Workspace users" subtitle={`${visibleUsers.length} of ${users.length} accounts · Role changes take effect immediately`} />
       {error && <div className="auth-message module-error user-management-error">{error}<button type="button" className="text-button" onClick={() => void loadUsers()}>Retry</button></div>}
+      {!loadingUsers && <div className="user-management-toolbar">
+        <label className="invoice-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, or department" aria-label="Search workspace users" /></label>
+        <label className="invoice-filter-label">Role<select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} aria-label="Filter users by role"><option value="ALL">All roles</option>{workspaceRoles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+        <label className="invoice-filter-label">Account<select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value as typeof accountFilter)} aria-label="Filter users by account status"><option value="ALL">All accounts</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></select></label>
+      </div>}
       {loadingUsers ? <div className="history-state"><Loader2 size={17} className="spin" /> Loading users</div> : <div className="data-table-wrap"><table className="data-table user-table">
         <thead><tr><th>User</th><th>Current role</th><th>Change role</th><th>Joined</th><th>Account</th><th>Actions</th></tr></thead>
-        <tbody>{users.map((managedUser) => <tr key={managedUser.id}>
+        <tbody>{visibleUsers.map((managedUser) => <tr key={managedUser.id}>
           <td><div className="user-cell"><div className="avatar avatar-small">{initials(managedUser.full_name)}</div><div><strong>{managedUser.full_name}{managedUser.id === currentUser.id && <small className="user-you-label">You</small>}</strong><span>{managedUser.email}</span></div></div></td>
           <td><span className={`role-badge role-${managedUser.role}`}>{roleLabel(managedUser.role)}</span></td>
           <td><select aria-label={`Change role for ${managedUser.full_name}`} value={managedUser.role} disabled={busyUser === managedUser.id || managedUser.id === currentUser.id} onChange={(event) => void changeUser(managedUser, { role: event.target.value })}>{workspaceRoles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></td>
           <td>{formatDate(managedUser.created_at)}</td>
           <td><span className={`user-status ${managedUser.active ? 'active' : 'inactive'}`}>{managedUser.active ? 'Active' : 'Inactive'}</span></td>
-          <td><button type="button" className={`user-access-button ${managedUser.active ? 'deactivate' : 'reactivate'}`} disabled={busyUser === managedUser.id || managedUser.id === currentUser.id} onClick={() => void changeUser(managedUser, { active: !managedUser.active })} title={managedUser.active ? 'Deactivate account' : 'Reactivate account'} aria-label={`${managedUser.active ? 'Deactivate' : 'Reactivate'} ${managedUser.full_name}`}><UserMinus size={16} />{managedUser.active ? 'Deactivate' : 'Reactivate'}</button></td>
+          <td><button type="button" className={`user-access-button ${managedUser.active ? 'deactivate' : 'reactivate'}`} disabled={busyUser === managedUser.id || managedUser.id === currentUser.id} onClick={() => void changeUser(managedUser, { active: !managedUser.active })} title={managedUser.active ? 'Deactivate account' : 'Reactivate account'} aria-label={`${managedUser.active ? 'Deactivate' : 'Reactivate'} ${managedUser.full_name}`}>{managedUser.active ? <UserMinus size={16} /> : <UserPlus size={16} />}{managedUser.active ? 'Deactivate' : 'Reactivate'}</button></td>
         </tr>)}</tbody>
-      </table>{users.length === 0 && !error && <EmptyState text="No workspace users found." />}</div>}
+      </table>{users.length === 0 && !error ? <EmptyState text="No workspace users found. Add a user to grant workspace access." /> : visibleUsers.length === 0 && !error ? <EmptyState text="No users match these search and filter settings." /> : null}</div>}
     </section>
     <section className="panel user-permissions-panel"><PanelHeader title="Role permissions" subtitle="Access is enforced by the server for every request." /><div className="user-permissions-grid">
       <p><strong>Admin</strong><span>Full workspace access, including user management and account roles.</span></p>
