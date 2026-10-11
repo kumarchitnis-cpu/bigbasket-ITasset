@@ -239,6 +239,12 @@ CREATE TABLE IF NOT EXISTS app_documents (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS workspace_settings (
+  id TEXT PRIMARY KEY CHECK (id = 'workspace'),
+  settings TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS sequences (
   name TEXT PRIMARY KEY,
   value INTEGER NOT NULL DEFAULT 0
@@ -283,7 +289,21 @@ export function ensureSchema() {
 }
 
 export function notify(recipientId, eventType, title, body, entityType = null, entityId = null, dedupeKey = `${eventType}:${entityId || newId()}`) {
-  getDb()
+  const db = getDb();
+  const settingsRow = db.prepare("SELECT settings FROM workspace_settings WHERE id = 'workspace'").get();
+  if (settingsRow) {
+    const settings = JSON.parse(settingsRow.settings);
+    if (!settings.notificationsInApp) return;
+    const event = eventType.toUpperCase();
+    const categoryEnabled = [
+      [/PURCHASE|PROCUREMENT/, 'notifyPurchaseRequests'],
+      [/INVOICE|AP_/, 'notifyInvoices'],
+      [/APPROVAL|REQUEST|WRITE_OFF/, 'notifyApprovals'],
+      [/SLA|ESCALATION/, 'notifySlaBreaches'],
+    ].find(([pattern]) => pattern.test(event));
+    if (categoryEnabled && settings[categoryEnabled[1]] === false) return;
+  }
+  db
     .prepare(
       `INSERT INTO app_notifications (id, recipient_id, event_type, title, body, entity_type, entity_id, dedupe_key)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)

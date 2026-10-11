@@ -15,6 +15,7 @@ import {
   CircleDollarSign,
   ClipboardList,
   ClipboardCheck,
+  Building2,
   Download,
   FileText,
   Laptop,
@@ -23,6 +24,7 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Palette,
   Plus,
   RefreshCw,
   Search,
@@ -40,7 +42,7 @@ import {
   XCircle,
   Wrench,
 } from 'lucide-react';
-import { ApiError, api, auth, setOnUnauthorized, type AppDocument, type AppUser } from '@/lib/api';
+import { ApiError, api, auth, setOnUnauthorized, type AppDocument, type AppUser, type WorkspaceSettings } from '@/lib/api';
 
 declare global {
   interface Window {
@@ -283,6 +285,7 @@ function App() {
       } else if (event.key === 'Escape') {
         setSearchOpen(false);
         setUserMenuOpen(false);
+        setMobileNavOpen(false);
         setGuideOpen(false);
         searchInputRef.current?.blur();
       }
@@ -406,20 +409,21 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}>
+      {mobileNavOpen && <button className="navigation-backdrop" aria-label="Close navigation menu" onClick={() => setMobileNavOpen(false)} />}
+      <aside id="workspace-navigation" className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`} aria-label="Workspace navigation">
         <div className="brand-row">
           <img className="brand-logo" src="/images/images.jpeg" alt="Bigbasket" />
           <div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div>
-          <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X size={18} /></button>
+          <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation menu"><X size={18} /></button>
         </div>
         <div className="workspace-switcher"><img className="workspace-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="workspace-copy"><span>Bigbasket</span><small>Operations workspace</small></div><ChevronDown size={15} /></div>
         <div className="nav-section-label">Workspace</div>
-        <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => label !== 'User Management' || user.role === 'admin').map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
+        <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => label !== 'User Management' || user.role === 'admin').map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
         <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button onClick={() => setGuideOpen(true)}>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI"><Sparkles size={16} /><span>Ask, navigate, or implement…</span><kbd>AI</kbd></button><div className="global-search-wrap" ref={searchBoxRef}><div className={`global-search ${searchOpen ? 'search-active' : ''}`}><button type="button" className="search-trigger" aria-label="Open workspace search" onClick={() => setSearchOpen(true)}><Search size={17} /></button><input ref={searchInputRef} value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && searchResults[0]) { showTab(searchResults[0].tab); setSearchOpen(false); } }} placeholder="Search assets, invoices, tickets..." aria-label="Search workspace" aria-expanded={searchOpen} aria-controls="workspace-search-results" /><kbd>Ctrl K</kbd>{query && <button className="search-clear" aria-label="Clear search" onClick={() => { setQuery(''); setSearchOpen(true); searchInputRef.current?.focus(); }}><X size={14} /></button>}</div>{searchOpen && query.trim() && <div className="search-results" id="workspace-search-results" role="listbox" aria-label="Workspace search results">{searchResults.map(({ id, title, detail, tab, icon: Icon }) => <button key={id} role="option" aria-selected="false" onClick={() => { setQuery(query.trim()); showTab(tab); setSearchOpen(false); }}><span className="search-result-icon"><Icon size={15} /></span><span className="search-result-copy"><strong>{title}</strong><small>{detail}</small></span><span className="search-result-type">{tab}</span></button>)}{searchResults.length === 0 && <div className="search-no-results">No matching assets, invoices, or tickets.</div>}</div>}</div><button className="icon-button notification-button" aria-label="Notifications" onClick={() => showTab('Notifications')}><Bell size={19} />{metrics.unreadNotifications > 0 && <span></span>}</button><div className="user-menu-wrap" ref={userMenuRef}><button className="user-menu-trigger" aria-label={`User menu for ${user.full_name}`} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}><span className="avatar avatar-light">{initials(user.full_name)}</span><ChevronDown size={13} /></button>{userMenuOpen && <div className="user-menu-popover"><div className="user-menu-heading"><strong>{user.full_name}</strong><span>{user.email}</span><small>{roleLabel(user.role)}</small></div><button onClick={() => { setUserMenuOpen(false); showTab('Settings'); }}><Settings2 size={15} /> Account settings</button>{user.role === 'admin' && <button onClick={() => { setUserMenuOpen(false); showTab('User Management'); }}><Users size={15} /> User management</button>}<button className="user-menu-signout" onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header>
+        <header className="topbar"><button className="navigation-menu-button" aria-label="Open navigation menu" aria-controls="workspace-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}><Menu size={21} /><span>Menu</span></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI"><Sparkles size={16} /><span>Ask, navigate, or implement…</span><kbd>AI</kbd></button><div className="global-search-wrap" ref={searchBoxRef}><div className={`global-search ${searchOpen ? 'search-active' : ''}`}><button type="button" className="search-trigger" aria-label="Open workspace search" onClick={() => setSearchOpen(true)}><Search size={17} /></button><input ref={searchInputRef} value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && searchResults[0]) { showTab(searchResults[0].tab); setSearchOpen(false); } }} placeholder="Search assets, invoices, tickets..." aria-label="Search workspace" aria-expanded={searchOpen} aria-controls="workspace-search-results" /><kbd>Ctrl K</kbd>{query && <button className="search-clear" aria-label="Clear search" onClick={() => { setQuery(''); setSearchOpen(true); searchInputRef.current?.focus(); }}><X size={14} /></button>}</div>{searchOpen && query.trim() && <div className="search-results" id="workspace-search-results" role="listbox" aria-label="Workspace search results">{searchResults.map(({ id, title, detail, tab, icon: Icon }) => <button key={id} role="option" aria-selected="false" onClick={() => { setQuery(query.trim()); showTab(tab); setSearchOpen(false); }}><span className="search-result-icon"><Icon size={15} /></span><span className="search-result-copy"><strong>{title}</strong><small>{detail}</small></span><span className="search-result-type">{tab}</span></button>)}{searchResults.length === 0 && <div className="search-no-results">No matching assets, invoices, or tickets.</div>}</div>}</div><button className="icon-button notification-button" aria-label="Notifications" onClick={() => showTab('Notifications')}><Bell size={19} />{metrics.unreadNotifications > 0 && <span></span>}</button><div className="user-menu-wrap" ref={userMenuRef}><button className="user-menu-trigger" aria-label={`User menu for ${user.full_name}`} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}><span className="avatar avatar-light">{initials(user.full_name)}</span><ChevronDown size={13} /></button>{userMenuOpen && <div className="user-menu-popover"><div className="user-menu-heading"><strong>{user.full_name}</strong><span>{user.email}</span><small>{roleLabel(user.role)}</small></div><button onClick={() => { setUserMenuOpen(false); showTab('Settings'); }}><Settings2 size={15} /> Account settings</button>{user.role === 'admin' && <button onClick={() => { setUserMenuOpen(false); showTab('User Management'); }}><Users size={15} /> User management</button>}<button className="user-menu-signout" onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header>
 
         <div className="page-content">
           {loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
@@ -887,28 +891,142 @@ function NotificationsView({ notifications, onRead }: { notifications: Workspace
   return <div className="fade-in"><PageTitle eyebrow="Workspace / Activity" title="Notifications" copy="Requests and workflow updates relevant to your account." />{error && <div className="auth-message module-error">{error}</div>}<section className="panel table-panel full-panel"><PanelHeader title="Recent notifications" subtitle={`${notifications.filter((notification) => !notification.read_at).length} unread`} /><div className="notification-list">{notifications.map((notification) => <article className={`notification-row ${notification.read_at ? '' : 'unread'}`} key={notification.id}><div className="notification-icon"><Bell size={16} /></div><div className="notification-copy"><strong>{notification.title}</strong><span>{notification.body}</span><small>{formatDateTime(notification.created_at)}</small></div>{!notification.read_at && <button className="button button-secondary mark-read-button" onClick={() => void markRead(notification.id)}>Mark read</button>}</article>)}</div>{notifications.length === 0 && <EmptyState text="You have no notifications yet." />}</section></div>;
 }
 
+type SettingsSection = 'Company' | 'Branding' | 'Procurement' | 'Approvals' | 'Notifications' | 'AP Escalation' | 'SLA';
+type StringSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends string ? K : never }[keyof WorkspaceSettings];
+type NumberSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends number ? K : never }[keyof WorkspaceSettings];
+type BooleanSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends boolean ? K : never }[keyof WorkspaceSettings];
+
+const settingsSections: { label: SettingsSection; icon: typeof LayoutDashboard }[] = [
+  { label: 'Company', icon: Building2 },
+  { label: 'Branding', icon: Palette },
+  { label: 'Procurement', icon: ClipboardList },
+  { label: 'Approvals', icon: ClipboardCheck },
+  { label: 'Notifications', icon: Bell },
+  { label: 'AP Escalation', icon: CircleAlert },
+  { label: 'SLA', icon: ShieldCheck },
+];
+
 function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUser) => void }) {
+  const [settings, setSettings] = useState<WorkspaceSettings | null>(null);
+  const [section, setSection] = useState<SettingsSection>('Company');
   const [fullName, setFullName] = useState(user.full_name);
   const [department, setDepartment] = useState(user.department);
+  const [loadingSettings, setLoadingSettings] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const isAdmin = user.role === 'admin';
+
+  useEffect(() => {
+    let active = true;
+    api.get<WorkspaceSettings>('/api/settings')
+      .then((result) => {
+        if (active) setSettings(result);
+      })
+      .catch((err: unknown) => {
+        if (active) setError(err instanceof ApiError ? err.message : 'Could not load workspace settings.');
+      })
+      .finally(() => {
+        if (active) setLoadingSettings(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const updateSetting = <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]) => {
+    setSettings((current) => current ? { ...current, [key]: value } : current);
+    setMessage(null);
+    setError(null);
+  };
+
+  const submitSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!settings || !isAdmin) return;
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      const updated = await api.put<AppUser>(`/api/profiles/${encodeURIComponent(user.id)}`, { full_name: fullName, department });
-      onSaved(updated);
-      setMessage('Profile settings saved.');
+      const updated = await api.put<WorkspaceSettings>('/api/settings', { settings });
+      setSettings(updated);
+      setMessage('Workspace settings saved.');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save profile settings.');
+      setError(err instanceof ApiError ? err.message : 'Could not save workspace settings.');
     } finally {
       setSaving(false);
     }
   };
-  return <div className="fade-in"><PageTitle eyebrow="Workspace / Preferences" title="Settings" copy="Manage your profile details and account information." /><div className="settings-grid"><section className="panel settings-panel"><PanelHeader title="Profile" subtitle="These details appear in asset and workflow records." /><form className="settings-form" onSubmit={submit}><label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} /></label><label>Department<input required value={department} onChange={(event) => setDepartment(event.target.value)} /></label><label>Work email<input value={user.email} disabled /></label><label>Role<input value={roleLabel(user.role)} disabled /></label>{error && <div className="auth-message">{error}</div>}{message && <div className="settings-success">{message}</div>}<button className="button button-primary" disabled={saving}>{saving ? 'Saving...' : 'Save profile'}</button></form></section><section className="panel settings-panel"><PanelHeader title="Account access" subtitle="Workspace role and sign-in details" /><div className="settings-account"><div><span>Access role</span><strong>{roleLabel(user.role)}</strong></div><div><span>Department</span><strong>{user.department}</strong></div><div><span>Account status</span><strong>{user.active ? 'Active' : 'Inactive'}</strong></div><p>Role changes are managed by a workspace administrator.</p></div></section></div></div>;
+
+  const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingProfile(true);
+    setProfileError(null);
+    setProfileMessage(null);
+    try {
+      const updated = await api.put<AppUser>(`/api/profiles/${encodeURIComponent(user.id)}`, { full_name: fullName, department });
+      onSaved(updated);
+      setProfileMessage('Profile settings saved.');
+    } catch (err) {
+      setProfileError(err instanceof ApiError ? err.message : 'Could not save profile settings.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  if (loadingSettings) return <LoadingState />;
+  if (!settings) return <ErrorState onRetry={() => window.location.reload()} />;
+
+  const textInput = (label: string, key: StringSetting, type = 'text', required = false) => (
+    <label key={key}>{label}<input type={type} required={required} disabled={!isAdmin} value={settings[key]} onChange={(event) => updateSetting(key, event.target.value)} /></label>
+  );
+  const numberInput = (label: string, key: NumberSetting, min = 0, max?: number) => (
+    <label key={key}>{label}<input type="number" min={min} max={max} step="1" required disabled={!isAdmin} value={settings[key]} onChange={(event) => updateSetting(key, Number(event.target.value))} /></label>
+  );
+  const checkbox = (label: string, key: BooleanSetting, description?: string) => (
+    <label className="settings-toggle" key={key}><input type="checkbox" disabled={!isAdmin} checked={settings[key]} onChange={(event) => updateSetting(key, event.target.checked)} /><span className="settings-toggle-copy"><strong>{label}</strong>{description && <small>{description}</small>}</span></label>
+  );
+  const colorInput = (label: string, key: 'primaryColor' | 'accentColor') => (
+    <label className="settings-color-field" key={key}>{label}<span><input type="color" disabled={!isAdmin} value={settings[key]} onChange={(event) => updateSetting(key, event.target.value)} /><code>{settings[key]}</code></span></label>
+  );
+
+  let sectionContent: JSX.Element;
+  switch (section) {
+    case 'Company':
+      sectionContent = <><div className="settings-fields">{textInput('Name', 'companyName', 'text', true)}{textInput('Email', 'companyEmail', 'email')}{textInput('Phone', 'companyPhone', 'tel')}{textInput('Address', 'companyAddress')}<label>Currency<select disabled={!isAdmin} value={settings.currency} onChange={(event) => updateSetting('currency', event.target.value)}><option value="INR">INR — Indian Rupee</option><option value="USD">USD — US Dollar</option><option value="EUR">EUR — Euro</option><option value="GBP">GBP — British Pound</option><option value="SGD">SGD — Singapore Dollar</option><option value="AED">AED — UAE Dirham</option></select></label>{textInput('Timezone', 'timezone', 'text', true)}</div></>;
+      break;
+    case 'Branding':
+      sectionContent = <><div className="settings-fields">{textInput('Logo URL', 'logoUrl', 'url')}{colorInput('Primary color', 'primaryColor')}{colorInput('Accent color', 'accentColor')}</div><p className="settings-help">Use a publicly accessible image URL for your company logo. Colors are saved for workspace branding.</p>{settings.logoUrl && <div className="settings-brand-preview"><img src={settings.logoUrl} alt="Company logo preview" /><span>Logo preview</span></div>}</>;
+      break;
+    case 'Procurement':
+      sectionContent = <div className="settings-fields">{textInput('Purchase order prefix', 'purchaseOrderPrefix', 'text', true)}{numberInput('Default payment terms (days)', 'paymentTermsDays', 0, 365)}{numberInput('Approval required above', 'approvalThreshold')}{checkbox('Require a purchase order for invoices', 'requirePurchaseOrder', 'Invoices without a linked purchase order can be held for review.')}</div>;
+      break;
+    case 'Approvals':
+      sectionContent = <div className="settings-fields">{numberInput('Approval levels', 'approvalLevels', 1, 5)}<label>Default approver role<select disabled={!isAdmin} value={settings.defaultApproverRole} onChange={(event) => updateSetting('defaultApproverRole', event.target.value)}><option value="approver">Approver</option><option value="admin">Administrator</option><option value="finance_officer">Finance officer</option><option value="procurement_officer">Procurement officer</option></select></label>{numberInput('Auto-approve requests up to', 'autoApproveLimit')}<p className="settings-help">Set the approval chain depth and default workspace role used for routed requests.</p></div>;
+      break;
+    case 'Notifications':
+      sectionContent = <div className="settings-option-list">{checkbox('Email notifications', 'notificationsEmail', 'Email delivery requires an email service to be configured.')}{checkbox('In-app notifications', 'notificationsInApp', 'Show notification updates in the workspace.')}{checkbox('Purchase request updates', 'notifyPurchaseRequests')}{checkbox('Invoice updates', 'notifyInvoices')}{checkbox('Approval activity', 'notifyApprovals')}{checkbox('SLA breach alerts', 'notifySlaBreaches')}</div>;
+      break;
+    case 'AP Escalation':
+      sectionContent = <div className="settings-fields">{checkbox('Enable AP escalation', 'apEscalationEnabled', 'Escalate invoices that remain pending review.')}{numberInput('Escalate after (hours)', 'apEscalationAfterHours', 1)}{numberInput('Repeat escalation every (hours)', 'apEscalationRepeatHours', 1)}{textInput('Escalation contact email', 'apEscalationEmail', 'email')}</div>;
+      break;
+    case 'SLA':
+      sectionContent = <div className="settings-sla-table"><div className="settings-sla-heading"><span>Priority</span><span>Response target (hours)</span><span>Resolution target (hours)</span></div>{(['Low', 'Medium', 'High', 'Urgent'] as const).map((priority) => {
+        return <div className="settings-sla-row" key={priority}><strong>{priority}</strong>{numberInput(`${priority} response target`, `sla${priority}ResponseHours` as NumberSetting, 1)}{numberInput(`${priority} resolution target`, `sla${priority}ResolutionHours` as NumberSetting, 1)}</div>;
+      })}</div>;
+      break;
+  }
+
+  return <div className="fade-in"><PageTitle eyebrow="Workspace / Preferences" title="Settings" copy="Company, procurement, notifications, and SLA" />
+    <div className="settings-tabs" role="tablist" aria-label="Workspace setting categories">{settingsSections.map(({ label, icon: Icon }) => <button type="button" role="tab" aria-selected={section === label} className={`settings-tab ${section === label ? 'active' : ''}`} key={label} onClick={() => { setSection(label); setMessage(null); setError(null); }}><Icon size={16} />{label}</button>)}</div>
+    <form className="panel settings-workspace-form" onSubmit={submitSettings}><section role="tabpanel" aria-label={`${section} settings`} className="settings-section">{sectionContent}</section>
+      {!isAdmin && <p className="settings-help">Only a workspace administrator can change company settings.</p>}
+      {error && <div className="auth-message">{error}</div>}{message && <div className="settings-success" role="status">{message}</div>}
+      {isAdmin && <div className="settings-save-row"><button className="button button-primary" disabled={saving}>{saving ? 'Saving...' : 'Save settings'}</button></div>}
+    </form>
+    <div className="settings-profile-grid"><section className="panel settings-panel"><PanelHeader title="My profile" subtitle="These details appear in asset and workflow records." /><form className="settings-form" onSubmit={submitProfile}><label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} /></label><label>Department<input required value={department} onChange={(event) => setDepartment(event.target.value)} /></label><label>Work email<input value={user.email} disabled /></label>{profileError && <div className="auth-message">{profileError}</div>}{profileMessage && <div className="settings-success" role="status">{profileMessage}</div>}<button className="button button-primary" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save profile'}</button></form></section>
+      <section className="panel settings-panel"><PanelHeader title="Account access" subtitle="Workspace role and sign-in details" /><div className="settings-account"><div><span>Access role</span><strong>{roleLabel(user.role)}</strong></div><div><span>Department</span><strong>{user.department}</strong></div><div><span>Account status</span><strong>{user.active ? 'Active' : 'Inactive'}</strong></div><p>Role changes are managed by a workspace administrator.</p></div></section></div>
+  </div>;
 }
 
 function UserManagementView({ currentUser }: { currentUser: AppUser }) {

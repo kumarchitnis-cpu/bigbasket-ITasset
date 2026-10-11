@@ -19,6 +19,43 @@ export type AppUser = {
   active: boolean;
 };
 
+export type WorkspaceSettings = {
+  companyName: string;
+  companyEmail: string;
+  companyPhone: string;
+  companyAddress: string;
+  currency: string;
+  timezone: string;
+  logoUrl: string;
+  primaryColor: string;
+  accentColor: string;
+  purchaseOrderPrefix: string;
+  paymentTermsDays: number;
+  requirePurchaseOrder: boolean;
+  approvalThreshold: number;
+  approvalLevels: number;
+  defaultApproverRole: string;
+  autoApproveLimit: number;
+  notificationsEmail: boolean;
+  notificationsInApp: boolean;
+  notifyPurchaseRequests: boolean;
+  notifyInvoices: boolean;
+  notifyApprovals: boolean;
+  notifySlaBreaches: boolean;
+  apEscalationEnabled: boolean;
+  apEscalationAfterHours: number;
+  apEscalationRepeatHours: number;
+  apEscalationEmail: string;
+  slaLowResponseHours: number;
+  slaLowResolutionHours: number;
+  slaMediumResponseHours: number;
+  slaMediumResolutionHours: number;
+  slaHighResponseHours: number;
+  slaHighResolutionHours: number;
+  slaUrgentResponseHours: number;
+  slaUrgentResolutionHours: number;
+};
+
 export type AppDocument = {
   id: string;
   storage_path: string;

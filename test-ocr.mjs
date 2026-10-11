@@ -1,0 +1,10 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const T = require('tesseract.js');
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+const worker = await T.createWorker('eng');
+const scheduler = T.createScheduler();
+scheduler.addWorker(worker);
+const result = await T.recognize(png, 'eng', { scheduler });
+console.log('OCR text:', JSON.stringify(result.data.text));
+await scheduler.terminate();

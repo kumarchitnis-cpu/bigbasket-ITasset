@@ -12,6 +12,7 @@ import { miscRouter } from './routes/misc.js';
 import { assetWorkflowsRouter } from './routes/asset-workflows.js';
 import { assistantRouter } from './routes/assistant.js';
 import { usersRouter } from './routes/users.js';
+import { settingsRouter } from './routes/settings.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -33,6 +34,7 @@ app.use('/api/purchase-requests', purchaseRequestsRouter);
 app.use('/api/workflows', assetWorkflowsRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/settings', settingsRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api', miscRouter);
 
