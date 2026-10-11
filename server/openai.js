@@ -1,3 +1,6 @@
+import { extractRawText } from './extractor.js';
+import { parseInvoiceText } from './parser.js';
+
 const EXTRACTION_PROMPT = `Extract invoice details from this document. Return only valid JSON with this exact shape: {"invoice_number": string|null, "vendor": string|null, "purchase_order": string|null, "invoice_date": "YYYY-MM-DD"|null, "due_date": "YYYY-MM-DD"|null, "currency": string|null, "subtotal": number|null, "tax": number|null, "total": number|null, "line_items": [{"description": string|null, "hsn": string|null, "quantity": number|null, "unit_price": number|null, "total": number|null}], "bank_details": {"name": string|null, "account": string|null, "ifsc": string|null, "branch": string|null}, "asset_details": [{"manufacturer": string|null, "model": string|null, "serial_number": string|null}], "confidence": number, "review_reason": string|null}. Include all line items and asset details found; use empty arrays if none. Bank details must be null when not present. Confidence must be 0-100. Use review_reason for missing critical fields, unreadable values, or totals that do not reconcile. Never invent values.`;
 
 function authHeader(apiKey) {
@@ -88,12 +91,17 @@ export async function answerAssistant(question, workspaceSummary) {
 
 export async function extractInvoice(fileDataUrl, filename) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    const error = new Error('AI invoice review is not configured for this workspace.');
-    error.status = 503;
-    throw error;
+  if (apiKey) {
+    try {
+      return await extractInvoiceViaOpenAI(apiKey, fileDataUrl, filename);
+    } catch (err) {
+      console.warn('OpenAI extraction failed, falling back to local OCR/parser', err.message);
+    }
   }
+  return extractInvoiceLocally(fileDataUrl, filename);
+}
 
+async function extractInvoiceViaOpenAI(apiKey, fileDataUrl, filename) {
   const fileMatch = typeof fileDataUrl === 'string'
     ? /^data:(application\/pdf|image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(fileDataUrl)
     : null;
@@ -145,6 +153,20 @@ export async function extractInvoice(fileDataUrl, filename) {
     throw error;
   }
 
+  return normalizeExtraction(extraction);
+}
+
+async function extractInvoiceLocally(fileDataUrl, filename) {
+  const text = await extractRawText(fileDataUrl, filename);
+  if (!text) {
+    const error = new Error('The local OCR extractor could not read this document. Save it as a PDF, PNG, JPG, or WebP and try again.');
+    error.status = 400;
+    throw error;
+  }
+  return parseInvoiceText(text);
+}
+
+function normalizeExtraction(extraction) {
   const lineItems = Array.isArray(extraction.line_items)
     ? extraction.line_items.slice(0, 500).filter((item) => item && typeof item === 'object').map((item) => ({
       description: invoiceText(item.description),

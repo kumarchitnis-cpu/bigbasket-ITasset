@@ -1,9 +1,145 @@
 import { Router } from 'express';
+import XlsxPopulate from 'xlsx-populate';
 import { audit, getDb, newId, nextVal, nowIso, notify } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
 
 const router = Router();
 router.use(requireAuth);
+
+const assignmentFields = [
+  ['employee_name', 'Employee Name', 120],
+  ['employee_id', 'Employee ID', 60],
+  ['designation', 'Designation', 120],
+  ['department', 'Department', 120],
+  ['asset_model', 'Asset Model', 160],
+  ['serial_number', 'Serial Number', 100],
+  ['ticket_no', 'Ticket No', 80],
+  ['doj', 'DoJ', 10],
+  ['remarks', 'Remarks', 1000],
+];
+const assignmentRoles = ['admin', 'it_asset_manager'];
+
+function parseAssignment(body, db, existingId = null) {
+  const assignment = {};
+  for (const [field, label, maxLength] of assignmentFields) {
+    const value = typeof body?.[field] === 'string' ? body[field].trim() : '';
+    if (['employee_name', 'employee_id', 'serial_number'].includes(field) && !value) {
+      return { error: `${label} is required.` };
+    }
+    if (value.length > maxLength) return { error: `${label} must be ${maxLength} characters or fewer.` };
+    assignment[field] = value;
+  }
+  if (assignment.doj && (!/^\d{4}-\d{2}-\d{2}$/.test(assignment.doj) || Number.isNaN(Date.parse(`${assignment.doj}T00:00:00Z`)) || new Date(`${assignment.doj}T00:00:00Z`).toISOString().slice(0, 10) !== assignment.doj)) {
+    return { error: 'Enter a valid date of joining.' };
+  }
+  const asset = db.prepare('SELECT model, status FROM it_assets WHERE serial_number = ?').get(assignment.serial_number);
+  if (!asset) return { error: 'Choose a serial number from the available assets.' };
+  const current = existingId
+    ? db.prepare('SELECT serial_number FROM it_employee_asset_assignments WHERE id = ?').get(existingId)
+    : null;
+  if (asset.status !== 'AVAILABLE' && current?.serial_number !== assignment.serial_number) {
+    return { error: 'Only available assets can be assigned.' };
+  }
+  const duplicate = db.prepare('SELECT id FROM it_employee_asset_assignments WHERE serial_number = ? AND id != ?').get(assignment.serial_number, existingId || '');
+  if (duplicate) return { error: 'This serial number is already assigned to an employee.' };
+  assignment.asset_model = asset.model;
+  return { assignment };
+}
+
+router.get('/employee-assignments', (req, res, next) => {
+  try {
+    const db = getDb();
+    const assignments = assignmentRoles.includes(req.user.role)
+      ? db.prepare('SELECT * FROM it_employee_asset_assignments ORDER BY employee_name COLLATE NOCASE, created_at DESC').all()
+      : db.prepare('SELECT * FROM it_employee_asset_assignments WHERE employee_name = ? COLLATE NOCASE ORDER BY created_at DESC').all(req.user.full_name);
+    res.json(assignments);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/employee-assignments/export', requireRole(...assignmentRoles), async (req, res, next) => {
+  try {
+    const assignments = getDb()
+      .prepare('SELECT employee_name, employee_id, designation, department, asset_model, serial_number, ticket_no, doj, remarks FROM it_employee_asset_assignments ORDER BY employee_name COLLATE NOCASE, created_at DESC')
+      .all();
+    const headers = assignmentFields.map(([, label]) => label);
+    const keys = assignmentFields.map(([field]) => field);
+    const workbook = await XlsxPopulate.fromBlankAsync();
+    const sheet = workbook.sheet(0).name('Employee Assets');
+    const lastColumn = String.fromCharCode(64 + headers.length);
+    sheet.range(`A1:${lastColumn}1`).value([headers]);
+    sheet.range(`A1:${lastColumn}1`).style({ bold: true, fill: '1F5874', fontColor: 'FFFFFF' });
+    sheet.autoFilter(sheet.range(`A1:${lastColumn}${Math.max(assignments.length + 1, 1)}`));
+    sheet.freezePanes(0, 1);
+    headers.forEach((header, index) => {
+      sheet.column(String.fromCharCode(65 + index)).width(Math.min(Math.max(header.length + 4, 16), 32));
+    });
+    for (const column of ['B', 'G']) sheet.column(column).style('numberFormat', '@');
+    if (assignments.length) {
+      sheet.range(`A2:${lastColumn}${assignments.length + 1}`).value(
+        assignments.map((assignment) => keys.map((key) => assignment[key] ?? '')),
+      );
+    }
+    const buffer = await workbook.outputAsync();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="employee-asset-assignments.xlsx"');
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/employee-assignments', requireRole(...assignmentRoles), (req, res, next) => {
+  try {
+    const db = getDb();
+    const parsed = parseAssignment(req.body, db);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const id = newId();
+    const columns = assignmentFields.map(([field]) => field);
+    db.prepare(
+      `INSERT INTO it_employee_asset_assignments (id, ${columns.join(', ')}, created_by)
+       VALUES (?, ${columns.map(() => '?').join(', ')}, ?)`,
+    ).run(id, ...columns.map((field) => parsed.assignment[field]), req.user.id);
+    audit(req.user.id, 'CREATE', 'employee_asset_assignment', id, 'SUCCESS');
+    res.status(201).json(db.prepare('SELECT * FROM it_employee_asset_assignments WHERE id = ?').get(id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/employee-assignments/:id', requireRole(...assignmentRoles), (req, res, next) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM it_employee_asset_assignments WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Employee asset assignment not found.' });
+    const parsed = parseAssignment(req.body, db, existing.id);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const columns = assignmentFields.map(([field]) => field);
+    db.prepare(
+      `UPDATE it_employee_asset_assignments
+       SET ${columns.map((field) => `${field} = ?`).join(', ')}, updated_at = ?
+       WHERE id = ?`,
+    ).run(...columns.map((field) => parsed.assignment[field]), nowIso(), existing.id);
+    audit(req.user.id, 'UPDATE', 'employee_asset_assignment', existing.id, 'SUCCESS');
+    res.json(db.prepare('SELECT * FROM it_employee_asset_assignments WHERE id = ?').get(existing.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/employee-assignments/:id', requireRole(...assignmentRoles), (req, res, next) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM it_employee_asset_assignments WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Employee asset assignment not found.' });
+    db.prepare('DELETE FROM it_employee_asset_assignments WHERE id = ?').run(existing.id);
+    audit(req.user.id, 'DELETE', 'employee_asset_assignment', existing.id, 'SUCCESS');
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/employee-requests', (req, res, next) => {
   try {

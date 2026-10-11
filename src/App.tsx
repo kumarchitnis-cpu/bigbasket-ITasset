@@ -24,6 +24,7 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Pencil,
   Palette,
   Plus,
   RefreshCw,
@@ -74,6 +75,7 @@ type Asset = {
   custodian: string;
   location: string;
   purchase_cost: number;
+  warranty_start: string | null;
   warranty_end: string | null;
   department: string;
   last_audited_at?: string | null;
@@ -137,6 +139,21 @@ type PurchaseRequest = {
   created_at: string;
 };
 
+type Vendor = {
+  id: string;
+  legal_name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  tax_id: string;
+  address: string;
+  categories: string;
+  status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  notes: string;
+  submitted_by_name?: string;
+  created_at: string;
+};
+
 type EmployeeAssetRequest = {
   id: string;
   request_number: string;
@@ -149,6 +166,19 @@ type EmployeeAssetRequest = {
   status: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
   review_note: string | null;
   created_at: string;
+};
+
+type EmployeeAssetAssignment = {
+  id: string;
+  employee_name: string;
+  employee_id: string;
+  designation: string;
+  department: string;
+  asset_model: string;
+  serial_number: string;
+  ticket_no: string;
+  doj: string;
+  remarks: string;
 };
 
 type WriteOffRequest = {
@@ -213,12 +243,13 @@ const workspaceRoles = [
 
 const invoiceStatuses: Invoice['status'][] = ['PENDING', 'UNDER_REVIEW', 'PROCESSED', 'ON_HOLD', 'REJECTED'];
 
-type Tab = 'Overview' | 'Assets' | 'Procurement' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'Service desk' | 'User Management';
+type Tab = 'Overview' | 'Assets' | 'Procurement' | 'Vendors' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'Service desk' | 'User Management';
 
 const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
   { label: 'Overview', icon: LayoutDashboard },
   { label: 'AI Assistant', icon: Bot },
   { label: 'Procurement', icon: ClipboardList },
+  { label: 'Vendors', icon: Building2 },
   { label: 'Invoices', icon: FileText },
   { label: 'Assets', icon: Box },
   { label: 'Emp Asset Mgmt', icon: Users },
@@ -233,6 +264,57 @@ const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
 
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 const compactMoney = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', notation: 'compact', maximumFractionDigits: 1 });
+type WarrantyStatus = 'ACTIVE' | 'EXPIRING' | 'EXPIRED' | 'UNKNOWN';
+
+function warrantyStatus(asset: Pick<Asset, 'warranty_end'>, today = new Date().toISOString().slice(0, 10)): WarrantyStatus {
+  if (!asset.warranty_end) return 'UNKNOWN';
+  if (asset.warranty_end < today) return 'EXPIRED';
+  const horizon = new Date(`${today}T00:00:00.000Z`);
+  horizon.setUTCDate(horizon.getUTCDate() + 30);
+  return asset.warranty_end <= horizon.toISOString().slice(0, 10) ? 'EXPIRING' : 'ACTIVE';
+}
+
+function warrantyPortal(manufacturer: string) {
+  const make = manufacturer.trim().toLowerCase();
+  if (make.includes('dell')) return { name: 'Dell', url: 'https://www.dell.com/support/contractservices/en-in' };
+  if (make.includes('lenovo')) return { name: 'Lenovo', url: 'https://pcsupport.lenovo.com/in/en/warranty-lookup#/' };
+  if (make === 'hp' || make.startsWith('hp ') || make.includes('hewlett')) return { name: 'HP', url: 'https://support.hp.com/in-en/check-warranty' };
+  if (make.includes('apple')) return { name: 'Apple', url: 'https://checkcoverage.apple.com/?locale=en_IN' };
+  return null;
+}
+
+function WarrantyLookupLink({ manufacturer, serialNumber }: { manufacturer: string; serialNumber: string }) {
+  const [message, setMessage] = useState('');
+  const portal = warrantyPortal(manufacturer);
+  if (!portal) return null;
+  const serial = serialNumber.trim();
+  return <div className="warranty-lookup-control">
+    <a
+      className={`button button-secondary ${!serial ? 'warranty-lookup-disabled' : ''}`}
+      href={portal.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-disabled={!serial}
+      onClick={(event) => {
+        if (!serial) {
+          event.preventDefault();
+          return;
+        }
+        setMessage('');
+        if (!navigator.clipboard?.writeText) {
+          setMessage('The lookup page opened, but clipboard access is unavailable. Copy the serial manually.');
+          return;
+        }
+        void navigator.clipboard.writeText(serial)
+          .then(() => setMessage('Serial copied. Paste it into the manufacturer lookup page.'))
+          .catch(() => setMessage('The lookup page opened, but the serial could not be copied. Copy it manually.'));
+      }}
+    >
+      <ArrowUpRight size={14} /> Check on {portal.name}
+    </a>
+    <span className="warranty-lookup-note" aria-live="polite">{message || (serial ? 'Opens the official lookup and copies the serial.' : 'Enter a serial number to enable lookup.')}</span>
+  </div>;
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
@@ -240,6 +322,7 @@ function App() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [employeeRequests, setEmployeeRequests] = useState<EmployeeAssetRequest[]>([]);
   const [writeOffRequests, setWriteOffRequests] = useState<WriteOffRequest[]>([]);
   const [inventoryReceipts, setInventoryReceipts] = useState<InventoryReceipt[]>([]);
@@ -249,6 +332,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [assetModalOpen, setAssetModalOpen] = useState(false);
+  const [pendingAssetId, setPendingAssetId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -303,11 +387,13 @@ function App() {
     else setLoading(true);
     setError(null);
     try {
-      const [assetData, invoiceData, ticketData, requestData, employeeRequestData, writeOffData, receiptData, notificationData, dashboardData] = await Promise.all([
+      const canViewVendors = ['admin', 'procurement_officer', 'approver'].includes(user?.role ?? '');
+      const [assetData, invoiceData, ticketData, requestData, vendorData, employeeRequestData, writeOffData, receiptData, notificationData, dashboardData] = await Promise.all([
         api.get<Asset[]>('/api/assets'),
         api.get<Invoice[]>('/api/invoices'),
         api.get<Ticket[]>('/api/tickets'),
         api.get<PurchaseRequest[]>('/api/purchase-requests'),
+        canViewVendors ? api.get<Vendor[]>('/api/vendors') : Promise.resolve([]),
         api.get<EmployeeAssetRequest[]>('/api/workflows/employee-requests'),
         api.get<WriteOffRequest[]>('/api/workflows/write-offs'),
         api.get<InventoryReceipt[]>('/api/receipts'),
@@ -318,6 +404,7 @@ function App() {
       setInvoices(invoiceData);
       setTickets(ticketData);
       setPurchaseRequests(requestData);
+      setVendors(vendorData);
       setEmployeeRequests(employeeRequestData);
       setWriteOffRequests(writeOffData);
       setInventoryReceipts(receiptData);
@@ -418,7 +505,7 @@ function App() {
         </div>
         <div className="workspace-switcher"><img className="workspace-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="workspace-copy"><span>Bigbasket</span><small>Operations workspace</small></div><ChevronDown size={15} /></div>
         <div className="nav-section-label">Workspace</div>
-        <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => label !== 'User Management' || user.role === 'admin').map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
+        <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => (label !== 'User Management' || user.role === 'admin') && (label !== 'Vendors' || ['admin', 'procurement_officer', 'approver'].includes(user.role))).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
         <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button onClick={() => setGuideOpen(true)}>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
@@ -426,17 +513,17 @@ function App() {
         <header className="topbar"><button className="navigation-menu-button" aria-label="Open navigation menu" aria-controls="workspace-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}><Menu size={21} /><span>Menu</span></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI"><Sparkles size={16} /><span>Ask, navigate, or implement…</span><kbd>AI</kbd></button><div className="global-search-wrap" ref={searchBoxRef}><div className={`global-search ${searchOpen ? 'search-active' : ''}`}><button type="button" className="search-trigger" aria-label="Open workspace search" onClick={() => setSearchOpen(true)}><Search size={17} /></button><input ref={searchInputRef} value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && searchResults[0]) { showTab(searchResults[0].tab); setSearchOpen(false); } }} placeholder="Search assets, invoices, tickets..." aria-label="Search workspace" aria-expanded={searchOpen} aria-controls="workspace-search-results" /><kbd>Ctrl K</kbd>{query && <button className="search-clear" aria-label="Clear search" onClick={() => { setQuery(''); setSearchOpen(true); searchInputRef.current?.focus(); }}><X size={14} /></button>}</div>{searchOpen && query.trim() && <div className="search-results" id="workspace-search-results" role="listbox" aria-label="Workspace search results">{searchResults.map(({ id, title, detail, tab, icon: Icon }) => <button key={id} role="option" aria-selected="false" onClick={() => { setQuery(query.trim()); showTab(tab); setSearchOpen(false); }}><span className="search-result-icon"><Icon size={15} /></span><span className="search-result-copy"><strong>{title}</strong><small>{detail}</small></span><span className="search-result-type">{tab}</span></button>)}{searchResults.length === 0 && <div className="search-no-results">No matching assets, invoices, or tickets.</div>}</div>}</div><button className="icon-button notification-button" aria-label="Notifications" onClick={() => showTab('Notifications')}><Bell size={19} />{metrics.unreadNotifications > 0 && <span></span>}</button><div className="user-menu-wrap" ref={userMenuRef}><button className="user-menu-trigger" aria-label={`User menu for ${user.full_name}`} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}><span className="avatar avatar-light">{initials(user.full_name)}</span><ChevronDown size={13} /></button>{userMenuOpen && <div className="user-menu-popover"><div className="user-menu-heading"><strong>{user.full_name}</strong><span>{user.email}</span><small>{roleLabel(user.role)}</small></div><button onClick={() => { setUserMenuOpen(false); showTab('Settings'); }}><Settings2 size={15} /> Account settings</button>{user.role === 'admin' && <button onClick={() => { setUserMenuOpen(false); showTab('User Management'); }}><Users size={15} /> User management</button>}<button className="user-menu-signout" onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header>
 
         <div className="page-content">
-          {loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
-            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} tickets={tickets} requests={purchaseRequests} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenServiceDesk={() => showTab('Service desk')} />}
-            {activeTab === 'Assets' && <AssetsView assets={filteredAssets} user={user} onAdd={() => setAssetModalOpen(true)} onRefresh={() => void loadData(true)} query={query} />}
+          {activeTab === 'Settings' ? <SettingsView user={user} onSaved={setUser} /> : loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
+            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} tickets={tickets} requests={purchaseRequests} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenServiceDesk={() => showTab('Service desk')} onOpenWarranties={() => showTab('Warranties')} />}
+            {activeTab === 'Assets' && <AssetsView assets={filteredAssets} user={user} onAdd={() => setAssetModalOpen(true)} onRefresh={() => void loadData(true)} query={query} openAssetId={pendingAssetId} onAssetOpened={() => setPendingAssetId(null)} onOpenWarranties={() => showTab('Warranties')} />}
             {activeTab === 'Procurement' && <ProcurementView requests={purchaseRequests} userName={user.full_name} department={user.department} onSaved={() => void loadData(true)} />}
+            {activeTab === 'Vendors' && <VendorsView vendors={vendors} user={user} onSaved={() => void loadData(true)} onOpenProcurement={() => showTab('Procurement')} onOpenInvoices={() => showTab('Invoices')} />}
             {activeTab === 'Invoices' && <InvoicesView invoices={invoices} user={user} query={query} onSaved={() => void loadData(true)} />}
-            {activeTab === 'Emp Asset Mgmt' && <EmployeeAssetsView requests={employeeRequests} user={user} onSaved={() => void loadData(true)} />}
+            {activeTab === 'Emp Asset Mgmt' && <EmployeeAssetsView requests={employeeRequests} assets={assets} user={user} onSaved={() => void loadData(true)} />}
             {activeTab === 'Inventory' && <InventoryView assets={assets} receipts={inventoryReceipts} user={user} onSaved={() => void loadData(true)} />}
-            {activeTab === 'Warranties' && <WarrantiesView assets={assets} />}
+            {activeTab === 'Warranties' && <WarrantiesView assets={assets} onOpenAssets={() => showTab('Assets')} onOpenInventory={() => showTab('Inventory')} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} />}
             {activeTab === 'Write-Off' && <WriteOffView assets={assets} requests={writeOffRequests} user={user} onSaved={() => void loadData(true)} />}
             {activeTab === 'Notifications' && <NotificationsView notifications={notifications} onRead={async (id) => { await api.put(`/api/notifications/${id}/read`, {}); setNotifications((current) => current.map((notification) => notification.id === id ? { ...notification, read_at: new Date().toISOString() } : notification)); }} />}
-            {activeTab === 'Settings' && <SettingsView user={user} onSaved={setUser} />}
             {activeTab === 'User Management' && user.role === 'admin' && <UserManagementView currentUser={user} />}
             {activeTab === 'AI Assistant' && <AssistantView onNavigate={showTab} />}
             {activeTab === 'Service desk' && <ServiceDeskView tickets={filteredTickets} userName={user.full_name} onSaved={() => void loadData(true)} />}
@@ -455,7 +542,8 @@ function OperationsGuide({ isAdmin, onClose, onNavigate }: { isAdmin: boolean; o
     { title: 'Assets', description: 'Browse the asset register and track assignment, return, transfer, audit, and maintenance activity.', tab: 'Assets', link: 'Go to assets' },
     { title: 'Employee equipment', description: 'Employees can submit equipment requests; asset managers and admins can review pending requests.', tab: 'Emp Asset Mgmt', link: 'Open equipment requests' },
     { title: 'Procurement and invoices', description: 'Track purchase requests in Procurement. Finance officers and admins can manage invoices and review extracted details.', tab: 'Procurement', link: 'Open procurement' },
-    { title: 'Inventory and warranties', description: 'Review goods receipts and available assets in Inventory, or check coverage in Warranties.', tab: 'Inventory', link: 'Open inventory' },
+    { title: 'Inventory', description: 'Review available registered assets and goods receipt history.', tab: 'Inventory', link: 'Open inventory' },
+    { title: 'Warranties', description: 'Review active coverage, upcoming expirations, expired assets, and unknown coverage.', tab: 'Warranties', link: 'Open warranty report' },
     { title: 'Service desk', description: 'Create and follow support tickets, including priority, assignment, and resolution status.', tab: 'Service desk', link: 'Open service desk' },
     { title: 'Roles and access', description: 'Available actions depend on your workspace role. Admins can manage users and assign roles from User Management.', tab: 'User Management', link: 'Manage users' },
   ];
@@ -481,7 +569,7 @@ function OperationsGuide({ isAdmin, onClose, onNavigate }: { isAdmin: boolean; o
   );
 }
 
-function Overview({ assets, invoices, tickets, requests, employeeRequests, activity, onOpenAssets, onOpenInvoices, onOpenProcurement, onOpenServiceDesk }: {
+function Overview({ assets, invoices, tickets, requests, employeeRequests, activity, onOpenAssets, onOpenInvoices, onOpenProcurement, onOpenServiceDesk, onOpenWarranties }: {
   assets: Asset[];
   invoices: Invoice[];
   tickets: Ticket[];
@@ -492,6 +580,7 @@ function Overview({ assets, invoices, tickets, requests, employeeRequests, activ
   onOpenInvoices: () => void;
   onOpenProcurement: () => void;
   onOpenServiceDesk: () => void;
+  onOpenWarranties: () => void;
 }) {
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
   const activeAssets = assets.filter((asset) => asset.status !== 'RETIRED').length;
@@ -528,7 +617,7 @@ function Overview({ assets, invoices, tickets, requests, employeeRequests, activ
   return <div className="fade-in operations-dashboard">
     <div className="page-heading">
       <div><p className="eyebrow">Workspace overview <span className="live-dot"></span> Live data</p><h1>Operations Dashboard</h1><p className="heading-copy">{today} · Asset, procurement, and service overview.</p></div>
-      <div className="heading-actions"><button className="button button-secondary" onClick={onOpenInvoices}><FileText size={16} /> Invoice register <ArrowUpRight size={14} /></button><button className="button button-primary" onClick={onOpenAssets}><Plus size={17} /> Add asset</button></div>
+      <div className="heading-actions"><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report <ArrowUpRight size={14} /></button><button className="button button-secondary" onClick={onOpenInvoices}><FileText size={16} /> Invoice register <ArrowUpRight size={14} /></button><button className="button button-primary" onClick={onOpenAssets}><Plus size={17} /> Add asset</button></div>
     </div>
 
     <div className="metric-grid dashboard-metrics">
@@ -608,11 +697,19 @@ function DashboardTrend({ values, color }: { values: { date: string; label: stri
   </div>;
 }
 
-function AssetsView({ assets, user, onAdd, onRefresh, query }: { assets: Asset[]; user: AppUser; onAdd: () => void; onRefresh: () => void; query: string }) {
+function AssetsView({ assets, user, onAdd, onRefresh, query, openAssetId, onAssetOpened, onOpenWarranties }: { assets: Asset[]; user: AppUser; onAdd: () => void; onRefresh: () => void; query: string; openAssetId: string | null; onAssetOpened: () => void; onOpenWarranties: () => void }) {
   const [statusFilter, setStatusFilter] = useState<'ALL' | Asset['status']>('ALL');
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const canManage = user.role === 'admin' || user.role === 'it_asset_manager';
+  useEffect(() => {
+    if (!openAssetId) return;
+    const asset = assets.find((item) => item.id === openAssetId);
+    if (asset) {
+      setSelectedAsset(asset);
+      onAssetOpened();
+    }
+  }, [assets, onAssetOpened, openAssetId]);
   const counts = useMemo(() => ({
     ALL: assets.length,
     ASSIGNED: assets.filter((asset) => asset.status === 'ASSIGNED').length,
@@ -630,7 +727,7 @@ function AssetsView({ assets, user, onAdd, onRefresh, query }: { assets: Asset[]
     { key: 'QUARANTINED', label: 'Quarantined' },
     { key: 'RETIRED', label: 'Retired' },
   ];
-  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div>{canManage && <div className="heading-actions"><button className="button button-secondary" onClick={() => setUploadOpen(true)}><Upload size={16} /> Upload Excel</button><button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button></div>}</div><div className="subnav-row"><div className="tab-pills">{pills.map(({ key, label }) => <button key={key} className={statusFilter === key ? 'selected' : ''} onClick={() => setStatusFilter(key)}>{label} <span>{counts[key]}</span></button>)}</div><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}{uploadOpen && <AssetImportModal onClose={() => setUploadOpen(false)} onSaved={onRefresh} />}</div>;
+  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div><div className="heading-actions"><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report</button>{canManage && <><button className="button button-secondary" onClick={() => setUploadOpen(true)}><Upload size={16} /> Upload Excel</button><button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button></>}</div></div><div className="subnav-row"><div className="tab-pills">{pills.map(({ key, label }) => <button key={key} className={statusFilter === key ? 'selected' : ''} onClick={() => setStatusFilter(key)}>{label} <span>{counts[key]}</span></button>)}</div><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} onOpenWarranties={onOpenWarranties} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}{uploadOpen && <AssetImportModal onClose={() => setUploadOpen(false)} onSaved={onRefresh} />}</div>;
 }
 
 function AssetImportModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -694,6 +791,116 @@ function ProcurementView({ requests, userName, department, onSaved }: { requests
   const monthPrefix = new Date().toISOString().slice(0, 7);
   const approvedThisMonth = requests.filter((request) => (request.status === 'APPROVED' || request.status === 'ORDERED') && request.created_at && request.created_at.slice(0, 7) === monthPrefix).length;
   return <div className="fade-in"><PageTitle eyebrow="Procurement / Requests" title="Purchase requests" copy="Move requests from need to approved purchase order with a clear audit trail." action="New request" icon={Plus} onAction={() => setRequestModalOpen(true)} /><div className="stat-strip"><MiniStat label="Pending approval" value={requests.filter((request) => request.status === 'PENDING_APPROVAL').length.toString()} tone="amber" /><MiniStat label="Approved this month" value={approvedThisMonth.toString()} tone="teal" /><MiniStat label="Committed spend" value={compactMoney.format(requests.reduce((sum, request) => sum + Number(request.amount), 0))} tone="blue" /></div><section className="panel table-panel full-panel"><PanelHeader title="Request pipeline" subtitle="Latest purchase requests and approvals" action="Export" /><div className="request-list">{requests.map((request) => <div className="request-row" key={request.id}><div className="request-icon"><ClipboardList size={17} /></div><div className="request-main"><strong>{request.title}</strong><span>{request.request_number} · {request.requester} · {request.department}</span></div><div className="request-amount">{money.format(request.amount)}</div><StatusBadge status={request.status} /><div className="request-date"><span>Needed by</span><strong>{formatDate(request.needed_by)}</strong></div><button className="row-more">•••</button></div>)}</div>{requests.length === 0 && <EmptyState text="No purchase requests yet. Create the first request to get started." />}</section>{requestModalOpen && <PurchaseRequestModal userName={userName} department={department} onClose={() => setRequestModalOpen(false)} onSaved={() => { setRequestModalOpen(false); onSaved(); }} />}</div>;
+}
+
+function VendorsView({ vendors, user, onSaved, onOpenProcurement, onOpenInvoices }: {
+  vendors: Vendor[];
+  user: AppUser;
+  onSaved: () => void;
+  onOpenProcurement: () => void;
+  onOpenInvoices: () => void;
+}) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [filter, setFilter] = useState<'ALL' | Vendor['status']>('ALL');
+  const [error, setError] = useState<string | null>(null);
+  const canManage = user.role === 'admin' || user.role === 'procurement_officer';
+  const canReview = user.role === 'admin' || user.role === 'approver';
+  const visibleVendors = vendors.filter((vendor) => filter === 'ALL' || vendor.status === filter);
+
+  const updateStatus = async (vendor: Vendor, status: 'APPROVED' | 'REJECTED') => {
+    setError(null);
+    try {
+      await api.put(`/api/vendors/${encodeURIComponent(vendor.id)}`, { status });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not review this vendor.');
+    }
+  };
+
+  const suspendVendor = async (vendor: Vendor) => {
+    if (!window.confirm(`Suspend ${vendor.legal_name}?`)) return;
+    setError(null);
+    try {
+      await api.del(`/api/vendors/${encodeURIComponent(vendor.id)}`);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not suspend this vendor.');
+    }
+  };
+
+  return <div className="fade-in">
+    <PageTitle eyebrow="Procurement / Supplier directory" title="Vendor onboarding" copy="Register suppliers, review onboarding submissions, and keep procurement and invoice records connected." action={canManage ? 'Add vendor' : undefined} icon={Plus} onAction={canManage ? () => setCreateOpen(true) : undefined} />
+    <div className="stat-strip">
+      <MiniStat label="Total vendors" value={vendors.length.toString()} tone="blue" />
+      <MiniStat label="Pending review" value={vendors.filter((vendor) => vendor.status === 'PENDING_REVIEW').length.toString()} tone="amber" />
+      <MiniStat label="Approved" value={vendors.filter((vendor) => vendor.status === 'APPROVED').length.toString()} tone="teal" />
+    </div>
+    <section className="panel table-panel full-panel">
+      <PanelHeader title="Supplier directory" subtitle="Vendor onboarding and status" />
+      {error && <div className="auth-message import-error" role="alert">{error}</div>}
+      <div className="vendor-toolbar">
+        <label className="invoice-filter-label">Status
+          <select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}>
+            <option value="ALL">All vendors</option><option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="SUSPENDED">Suspended</option>
+          </select>
+        </label>
+        <div className="vendor-links"><button className="button button-secondary" onClick={onOpenProcurement}>Purchase requests</button><button className="button button-secondary" onClick={onOpenInvoices}>Invoices</button></div>
+      </div>
+      <div className="vendor-table-wrap"><table className="data-table vendor-table">
+        <thead><tr><th>Vendor</th><th>Contact</th><th>Categories</th><th>Tax ID</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>{visibleVendors.map((vendor) => <tr key={vendor.id}>
+          <td><strong>{vendor.legal_name}</strong><small>{vendor.email || vendor.phone || 'No contact details'}</small></td>
+          <td>{vendor.contact_name || '—'}<small>{vendor.phone || '—'}</small></td>
+          <td>{vendor.categories || '—'}</td><td>{vendor.tax_id || '—'}</td><td>{formatDate(vendor.created_at)}</td>
+          <td><StatusBadge status={vendor.status} /></td>
+          <td><div className="table-actions">
+            {vendor.status === 'PENDING_REVIEW' && canReview && <><button className="button button-secondary" onClick={() => void updateStatus(vendor, 'APPROVED')}>Approve</button><button className="button button-secondary" onClick={() => void updateStatus(vendor, 'REJECTED')}>Reject</button></>}
+            {vendor.status === 'APPROVED' && user.role === 'admin' && <button className="button button-secondary" onClick={() => void suspendVendor(vendor)}>Suspend</button>}
+          </div></td>
+        </tr>)}</tbody>
+      </table></div>
+      {visibleVendors.length === 0 && <EmptyState text="No vendors match this status. Add a vendor or choose another filter." />}
+    </section>
+    {createOpen && <VendorModal onClose={() => setCreateOpen(false)} onSaved={() => { setCreateOpen(false); onSaved(); }} />}
+  </div>;
+}
+
+function VendorModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ legal_name: '', contact_name: '', email: '', phone: '', tax_id: '', address: '', categories: '', notes: '' });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post('/api/vendors', form);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not submit vendor onboarding.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <form className="modal-card" onSubmit={(event) => void submit(event)}>
+      <div className="modal-header"><div><p className="eyebrow">Procurement</p><h2>Onboard a vendor</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div>
+      <div className="form-grid">
+        <label>Legal name<input required maxLength={200} value={form.legal_name} onChange={(event) => setForm({ ...form, legal_name: event.target.value })} /></label>
+        <label>Contact name<input maxLength={200} value={form.contact_name} onChange={(event) => setForm({ ...form, contact_name: event.target.value })} /></label>
+        <label>Email<input type="email" maxLength={200} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+        <label>Phone<input maxLength={200} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+        <label>Tax ID<input maxLength={200} value={form.tax_id} onChange={(event) => setForm({ ...form, tax_id: event.target.value })} /></label>
+        <label>Categories<input maxLength={200} placeholder="Hardware, software, services" value={form.categories} onChange={(event) => setForm({ ...form, categories: event.target.value })} /></label>
+        <label className="form-full">Address<textarea maxLength={1000} rows={2} value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></label>
+        <label className="form-full">Notes<textarea maxLength={1000} rows={2} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+      </div>
+      {error && <div className="auth-message import-error" role="alert">{error}</div>}
+      <div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}{busy ? 'Submitting...' : 'Submit for review'}</button></div>
+    </form>
+  </div>;
 }
 
 function InvoicesView({ invoices, user, query, onSaved }: { invoices: Invoice[]; user: AppUser; query: string; onSaved: () => void }) {
@@ -766,10 +973,38 @@ function ServiceDeskView({ tickets, userName, onSaved }: { tickets: Ticket[]; us
   return <div className="fade-in"><PageTitle eyebrow="Operations / Support" title="Service desk" copy="Keep requests, incidents, and SLA commitments moving forward." action="Create ticket" icon={Plus} onAction={() => setTicketModalOpen(true)} /><div className="stat-strip"><MiniStat label="Open tickets" value={tickets.filter((ticket) => ticket.status === 'OPEN').length.toString()} tone="blue" /><MiniStat label="SLA at risk" value={tickets.filter((ticket) => ticket.priority === 'URGENT' || ticket.priority === 'HIGH').length.toString()} tone="red" /><MiniStat label="Resolved" value={tickets.filter((ticket) => ticket.status === 'RESOLVED').length.toString()} tone="teal" /></div><section className="panel table-panel full-panel"><PanelHeader title="Active work" subtitle="Incidents and requests assigned to your team" action="Filter" /><div className="ticket-list">{tickets.map((ticket) => <div className="ticket-row" key={ticket.id}><div className={`priority-bar ${ticket.priority.toLowerCase()}`}></div><div className="ticket-main"><div><span className="ticket-number">{ticket.ticket_number}</span><strong>{ticket.title}</strong></div><span>{ticket.category} · Requested by {ticket.requester}</span></div><PriorityBadge priority={ticket.priority} /><StatusBadge status={ticket.status} /><div className="ticket-assignee"><div className="avatar avatar-small">{initials(ticket.assignee)}</div><span>{ticket.assignee}</span></div><div className="ticket-due"><span>{ticket.status === 'RESOLVED' ? 'Completed' : 'SLA'}</span><strong>{ticket.due_label}</strong></div></div>)}</div>{tickets.length === 0 && <EmptyState text="No tickets in the queue. Create a ticket to report an issue or request." />}</section>{ticketModalOpen && <TicketModal userName={userName} onClose={() => setTicketModalOpen(false)} onSaved={() => { setTicketModalOpen(false); onSaved(); }} />}</div>;
 }
 
-function EmployeeAssetsView({ requests, user, onSaved }: { requests: EmployeeAssetRequest[]; user: AppUser; onSaved: () => void }) {
-  const [modalOpen, setModalOpen] = useState(false);
+function EmployeeAssetsView({ requests, assets, user, onSaved }: { requests: EmployeeAssetRequest[]; assets: Asset[]; user: AppUser; onSaved: () => void }) {
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<EmployeeAssetAssignment | null>(null);
+  const [assignments, setAssignments] = useState<EmployeeAssetAssignment[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true);
+  const [assignmentsError, setAssignmentsError] = useState<string | null>(null);
+  const [assignmentActionError, setAssignmentActionError] = useState<string | null>(null);
+  const [assignmentSearch, setAssignmentSearch] = useState('');
+  const [assignmentBusy, setAssignmentBusy] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const canReview = user.role === 'admin' || user.role === 'it_asset_manager';
+  const visibleAssignments = assignments.filter((assignment) =>
+    [assignment.employee_name, assignment.employee_id, assignment.designation, assignment.department, assignment.asset_model, assignment.serial_number, assignment.ticket_no, assignment.remarks]
+      .some((value) => value.toLowerCase().includes(assignmentSearch.trim().toLowerCase())),
+  );
+  const loadAssignments = useCallback(async () => {
+    setAssignmentsLoading(true);
+    setAssignmentsError(null);
+    try {
+      setAssignments(await api.get<EmployeeAssetAssignment[]>('/api/workflows/employee-assignments'));
+    } catch (err) {
+      setAssignmentsError(err instanceof ApiError ? err.message : 'Could not load employee asset assignments.');
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAssignments();
+  }, [loadAssignments]);
+
   const review = async (request: EmployeeAssetRequest, status: 'APPROVED' | 'REJECTED') => {
     setReviewError(null);
     try {
@@ -779,7 +1014,115 @@ function EmployeeAssetsView({ requests, user, onSaved }: { requests: EmployeeAss
       setReviewError(error instanceof ApiError ? error.message : 'Could not review the asset request.');
     }
   };
-  return <div className="fade-in"><PageTitle eyebrow="Employee services / Equipment" title="Employee asset management" copy={canReview ? 'Review employee equipment requests and track request outcomes.' : 'Request the equipment you need and follow its approval status.'} action="Request asset" icon={Plus} onAction={() => setModalOpen(true)} /><div className="stat-strip"><MiniStat label="Pending review" value={requests.filter((request) => request.status === 'PENDING_APPROVAL').length.toString()} tone="amber" /><MiniStat label="Approved" value={requests.filter((request) => request.status === 'APPROVED').length.toString()} tone="teal" /><MiniStat label="Requests shown" value={requests.length.toString()} tone="blue" /></div>{reviewError && <div className="auth-message module-error">{reviewError}</div>}<section className="panel table-panel full-panel"><PanelHeader title={canReview ? 'Employee requests' : 'My asset requests'} subtitle={canReview ? 'Requests across the workspace' : 'Requests are visible only to you and asset managers'} /><div className="request-list">{requests.map((request) => <div className="request-row employee-request-row" key={request.id}><div className="request-icon"><Users size={17} /></div><div className="request-main"><strong>{request.category} · {request.request_number}</strong><span>{request.requester_name} · {request.department} · Needed by {formatDate(request.needed_by)}</span><small>{request.justification}</small></div><StatusBadge status={request.status} />{canReview && request.status === 'PENDING_APPROVAL' && <div className="request-review-actions"><button className="icon-button approve-action" aria-label={`Approve ${request.request_number}`} onClick={() => void review(request, 'APPROVED')}><Check size={17} /></button><button className="icon-button reject-action" aria-label={`Reject ${request.request_number}`} onClick={() => void review(request, 'REJECTED')}><XCircle size={17} /></button></div>}</div>)}</div>{requests.length === 0 && <EmptyState text={canReview ? 'No employee asset requests are waiting.' : 'You have not submitted an asset request yet.'} />}</section>{modalOpen && <EmployeeAssetRequestModal user={user} onClose={() => setModalOpen(false)} onSaved={() => { setModalOpen(false); onSaved(); }} />}</div>;
+  const downloadAssignments = async () => {
+    setAssignmentActionError(null);
+    try {
+      const file = await api.download('/api/workflows/employee-assignments/export');
+      const url = URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'employee-asset-assignments.xlsx';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setAssignmentActionError(err instanceof ApiError ? err.message : 'Could not download the employee assignment spreadsheet.');
+    }
+  };
+  const deleteAssignment = async (assignment: EmployeeAssetAssignment) => {
+    if (!window.confirm(`Delete the asset assignment for ${assignment.employee_name} (${assignment.serial_number})?`)) return;
+    setAssignmentBusy(assignment.id);
+    setAssignmentActionError(null);
+    try {
+      await api.del(`/api/workflows/employee-assignments/${encodeURIComponent(assignment.id)}`);
+      setAssignments((current) => current.filter((item) => item.id !== assignment.id));
+    } catch (err) {
+      setAssignmentActionError(err instanceof ApiError ? err.message : 'Could not delete this employee asset assignment.');
+    } finally {
+      setAssignmentBusy(null);
+    }
+  };
+
+  return <div className="fade-in">
+    <div className="page-heading employee-assets-heading"><div><p className="eyebrow">Employee services / Equipment</p><h1>Employee Asset Management</h1><p className="heading-copy">{canReview ? 'Manage employee asset assignments and equipment requests.' : 'View your assigned equipment and follow asset request status.'}</p></div><div className="heading-actions">{canReview && <button className="button button-secondary" onClick={() => void downloadAssignments()}><Download size={16} /> Download Excel</button>}{canReview ? <button className="button button-primary" onClick={() => { setEditingAssignment(null); setAssignmentModalOpen(true); }}><Plus size={17} /> New Assignment</button> : <button className="button button-primary" onClick={() => setRequestModalOpen(true)}><Plus size={17} /> Request asset</button>}</div></div>
+    {assignmentActionError && <div className="auth-message module-error" role="alert">{assignmentActionError}</div>}
+    {canReview && <section className="panel table-panel full-panel employee-assignment-panel">
+      <div className="employee-assignment-toolbar"><div><h2>Employee asset assignments</h2><p>Assigned equipment by employee</p></div><label className="employee-assignment-search"><Search size={15} /><input value={assignmentSearch} onChange={(event) => setAssignmentSearch(event.target.value)} placeholder="Search employee, asset, or serial number" aria-label="Search employee asset assignments" /></label></div>
+      {assignmentsError && <div className="auth-message module-error employee-assignment-error" role="alert">{assignmentsError}<button type="button" className="text-button" onClick={() => void loadAssignments()}>Retry</button></div>}
+      {assignmentsLoading ? <div className="history-state"><Loader2 size={17} className="spin" /> Loading employee assignments</div> : assignmentsError ? null : visibleAssignments.length === 0 ? <EmptyState text={assignments.length ? 'No assignments match your search.' : 'No employee asset assignments have been recorded yet.'} /> : <div className="data-table-wrap employee-assignment-table-wrap"><table className="data-table employee-assignment-table"><thead><tr><th>Employee Name</th><th>Employee ID</th><th>Designation</th><th>Department</th><th>Asset Model</th><th>Serial Number</th><th>Ticket No</th><th>DoJ</th><th>Remarks</th><th>Actions</th></tr></thead><tbody>{visibleAssignments.map((assignment) => <tr key={assignment.id}><td><strong>{assignment.employee_name}</strong></td><td>{assignment.employee_id}</td><td>{assignment.designation}</td><td>{assignment.department}</td><td>{assignment.asset_model}</td><td><span className="employee-serial-number">{assignment.serial_number}</span></td><td>{assignment.ticket_no || '—'}</td><td>{formatDate(assignment.doj)}</td><td>{assignment.remarks || '—'}</td><td><div className="employee-assignment-actions"><button type="button" className="button button-secondary" disabled={assignmentBusy === assignment.id} onClick={() => { setEditingAssignment(assignment); setAssignmentModalOpen(true); }}><Pencil size={13} /> Edit</button><button type="button" className="button employee-assignment-delete" disabled={assignmentBusy === assignment.id} onClick={() => void deleteAssignment(assignment)}>{assignmentBusy === assignment.id ? <Loader2 size={13} className="spin" /> : <XCircle size={13} />} Delete</button></div></td></tr>)}</tbody></table></div>}
+    </section>}
+    <div className="stat-strip employee-request-stats"><MiniStat label="Pending review" value={requests.filter((request) => request.status === 'PENDING_APPROVAL').length.toString()} tone="amber" /><MiniStat label="Approved" value={requests.filter((request) => request.status === 'APPROVED').length.toString()} tone="teal" /><MiniStat label="Requests shown" value={requests.length.toString()} tone="blue" /></div>
+    {reviewError && <div className="auth-message module-error">{reviewError}</div>}
+    <section className="panel table-panel full-panel"><PanelHeader title={canReview ? 'Employee equipment requests' : 'My asset requests'} subtitle={canReview ? 'Requests across the workspace' : 'Requests are visible only to you and asset managers'} /><div className="request-list">{requests.map((request) => <div className="request-row employee-request-row" key={request.id}><div className="request-icon"><Users size={17} /></div><div className="request-main"><strong>{request.category} · {request.request_number}</strong><span>{request.requester_name} · {request.department} · Needed by {formatDate(request.needed_by)}</span><small>{request.justification}</small></div><StatusBadge status={request.status} />{canReview && request.status === 'PENDING_APPROVAL' && <div className="request-review-actions"><button className="icon-button approve-action" aria-label={`Approve ${request.request_number}`} onClick={() => void review(request, 'APPROVED')}><Check size={17} /></button><button className="icon-button reject-action" aria-label={`Reject ${request.request_number}`} onClick={() => void review(request, 'REJECTED')}><XCircle size={17} /></button></div>}</div>)}</div>{requests.length === 0 && <EmptyState text={canReview ? 'No employee asset requests are waiting.' : 'You have not submitted an asset request yet.'} />}</section>
+    {requestModalOpen && <EmployeeAssetRequestModal user={user} onClose={() => setRequestModalOpen(false)} onSaved={() => { setRequestModalOpen(false); onSaved(); }} />}
+    {canReview && <div className="employee-request-action"><button className="text-button" onClick={() => setRequestModalOpen(true)}><Plus size={14} /> Create an equipment request</button></div>}
+    {assignmentModalOpen && <EmployeeAssetAssignmentModal assignment={editingAssignment} assets={assets} assignments={assignments} onClose={() => setAssignmentModalOpen(false)} onSaved={(assignment) => { setAssignments((current) => editingAssignment ? current.map((item) => item.id === assignment.id ? assignment : item) : [...current, assignment].sort((a, b) => a.employee_name.localeCompare(b.employee_name))); setAssignmentModalOpen(false); onSaved(); }} />}
+  </div>;
+}
+
+function EmployeeAssetAssignmentModal({ assignment, assets, assignments, onClose, onSaved }: { assignment: EmployeeAssetAssignment | null; assets: Asset[]; assignments: EmployeeAssetAssignment[]; onClose: () => void; onSaved: (assignment: EmployeeAssetAssignment) => void }) {
+  const assignedSerials = new Set(assignments.filter((item) => item.id !== assignment?.id).map((item) => item.serial_number));
+  const selectableAssets = assets.filter((asset) =>
+    (asset.status === 'AVAILABLE' || asset.serial_number === assignment?.serial_number)
+    && (!assignedSerials.has(asset.serial_number) || asset.serial_number === assignment?.serial_number),
+  );
+  const assetTypes = Array.from(new Set(selectableAssets.map((asset) => asset.category))).sort((a, b) => a.localeCompare(b));
+  const currentAsset = assets.find((asset) => asset.serial_number === assignment?.serial_number);
+  const [form, setForm] = useState({
+    employee_name: assignment?.employee_name ?? '',
+    employee_id: assignment?.employee_id ?? '',
+    designation: assignment?.designation ?? '',
+    department: assignment?.department ?? '',
+    asset_type: currentAsset?.category ?? '',
+    asset_model: currentAsset?.model ?? assignment?.asset_model ?? '',
+    serial_number: assignment?.serial_number ?? '',
+    ticket_no: assignment?.ticket_no ?? '',
+    doj: assignment?.doj ?? '',
+    remarks: assignment?.remarks ?? '',
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [serialMissing, setSerialMissing] = useState(false);
+  const assetsForType = selectableAssets.filter((asset) => !form.asset_type || asset.category === form.asset_type);
+  const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!form.serial_number) {
+      setSerialMissing(true);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = {
+        employee_name: form.employee_name,
+        employee_id: form.employee_id,
+        designation: form.designation,
+        department: form.department,
+        asset_model: form.asset_model,
+        serial_number: form.serial_number,
+        ticket_no: form.ticket_no,
+        doj: form.doj,
+        remarks: form.remarks,
+      };
+      const saved = assignment
+        ? await api.put<EmployeeAssetAssignment>(`/api/workflows/employee-assignments/${encodeURIComponent(assignment.id)}`, payload)
+        : await api.post<EmployeeAssetAssignment>('/api/workflows/employee-assignments', payload);
+      onSaved(saved);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save this employee asset assignment.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fields: { key: keyof typeof form; label: string; required?: boolean; type?: string }[] = [
+    { key: 'employee_name', label: 'Employee Name', required: true },
+    { key: 'employee_id', label: 'Employee ID', required: true },
+    { key: 'designation', label: 'Designation' },
+    { key: 'department', label: 'Department' },
+    { key: 'ticket_no', label: 'Ticket No' },
+    { key: 'doj', label: 'Date of Joining', type: 'date' },
+  ];
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><form className="modal-card employee-assignment-modal" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Employee services / Equipment</p><h2>{assignment ? 'Edit Employee Asset' : 'New Employee Asset'}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close assignment form" disabled={busy}><X size={18} /></button></div><div className="form-grid employee-assignment-form">{fields.slice(0, 4).map(({ key, label, required, type }) => <label key={key}>{label}{required && ' *'}<input required={required} type={type ?? 'text'} value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}<label className="span-2">Asset Type<select value={form.asset_type} onChange={(event) => { setForm((current) => ({ ...current, asset_type: event.target.value, serial_number: '', asset_model: '' })); setSerialMissing(false); setError(null); }}><option value="">All asset types</option>{assetTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label><label className="span-2">Serial Number *<select required value={form.serial_number} aria-invalid={serialMissing && !form.serial_number} aria-describedby="assignment-serial-hint" onChange={(event) => { const selected = assetsForType.find((asset) => asset.serial_number === event.target.value); setForm((current) => ({ ...current, serial_number: event.target.value, asset_model: selected?.model ?? '' })); setSerialMissing(false); setError(null); }}><option value="">Select a serial number</option>{assetsForType.map((asset) => <option key={asset.id} value={asset.serial_number}>{asset.serial_number} · {asset.manufacturer} {asset.model}</option>)}</select>{(!assetsForType.length || serialMissing) && <small className="assignment-serial-hint" id="assignment-serial-hint">{assetsForType.length ? 'Serial number is required — pick one from the dropdown below.' : 'No available serial numbers match this asset type.'}</small>}</label>{fields.slice(4).map(({ key, label, required, type }) => <label key={key}>{label}{required && ' *'}<input required={required} type={type ?? 'text'} value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}<label className="span-2">Remarks<textarea maxLength={1000} value={form.remarks} onChange={(event) => update('remarks', event.target.value)} placeholder="Optional assignment notes" /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? 'Saving...' : assignment ? 'Save changes' : 'Create assignment'}</button></div></form></div>;
 }
 
 function EmployeeAssetRequestModal({ user, onClose, onSaved }: { user: AppUser; onClose: () => void; onSaved: () => void }) {
@@ -831,18 +1174,141 @@ function InventoryView({ assets, receipts, user, onSaved }: { assets: Asset[]; r
   return <div className="fade-in"><PageTitle eyebrow="Inventory / Stock operations" title="Inventory" copy="Available assets and goods receipt activity from your operational register." action={canReceive ? 'Record goods receipt' : undefined} icon={Plus} onAction={canReceive ? () => setReceiptModalOpen(true) : undefined} /><div className="stat-strip"><MiniStat label="Available assets" value={stock.length.toString()} tone="teal" /><MiniStat label="Categories in stock" value={categories.length.toString()} tone="blue" /><MiniStat label="Goods receipts" value={receipts.length.toString()} tone="amber" /></div><section className="panel table-panel full-panel"><PanelHeader title="Available stock" subtitle="Registered assets ready to assign" /><AssetTable assets={stock} /></section><section className="panel table-panel full-panel module-panel-gap"><PanelHeader title="Recent goods receipts" subtitle="Received and accepted quantities recorded against purchase orders" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Receipt</th><th>Purchase order</th><th>Vendor</th><th>Received</th><th>Accepted / ordered</th><th>Status</th></tr></thead><tbody>{receipts.map((receipt) => <tr key={receipt.id}><td><strong>{receipt.receipt_number}</strong></td><td>{receipt.purchase_order}</td><td>{receipt.vendor}</td><td>{formatDate(receipt.received_date)}</td><td>{receipt.accepted_quantity} / {receipt.ordered_quantity}</td><td><StatusBadge status={receipt.status} /></td></tr>)}</tbody></table>{receipts.length === 0 && <EmptyState text="No goods receipts recorded yet." />}</div></section>{receiptModalOpen && <GoodsReceiptModal onClose={() => setReceiptModalOpen(false)} onSaved={() => { setReceiptModalOpen(false); onSaved(); }} />}</div>;
 }
 
-function WarrantiesView({ assets }: { assets: Asset[] }) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const horizon = new Date(today);
-  horizon.setDate(horizon.getDate() + 90);
-  const warrantyAssets = assets.filter((asset) => asset.status !== 'RETIRED' && asset.warranty_end).sort((a, b) => String(a.warranty_end).localeCompare(String(b.warranty_end)));
-  const expired = warrantyAssets.filter((asset) => new Date(`${asset.warranty_end}T00:00:00`) < today);
-  const expiring = warrantyAssets.filter((asset) => {
-    const end = new Date(`${asset.warranty_end}T00:00:00`);
-    return end >= today && end <= horizon;
+function WarrantiesView({ assets, onOpenAssets, onOpenInventory, onOpenAsset }: { assets: Asset[]; onOpenAssets: () => void; onOpenInventory: () => void; onOpenAsset: (asset: Asset) => void }) {
+  const [manufacturerFilter, setManufacturerFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | WarrantyStatus>('ALL');
+  const [reportTab, setReportTab] = useState<'COMPLIANCE' | 'FORECAST' | 'MANUFACTURER' | 'LIFECYCLE'>('COMPLIANCE');
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const reportAssets = assets.filter((asset) => asset.status !== 'RETIRED');
+  const manufacturers = [...new Set(reportAssets.map((asset) => asset.manufacturer))].sort((a, b) => a.localeCompare(b));
+  const filteredAssets = reportAssets
+    .filter((asset) => manufacturerFilter === 'ALL' || asset.manufacturer === manufacturerFilter)
+    .filter((asset) => statusFilter === 'ALL' || warrantyStatus(asset, today) === statusFilter)
+    .sort((a, b) => (a.warranty_end || '9999-12-31').localeCompare(b.warranty_end || '9999-12-31') || a.asset_tag.localeCompare(b.asset_tag));
+  const counts = {
+    total: filteredAssets.length,
+    active: filteredAssets.filter((asset) => ['ACTIVE', 'EXPIRING'].includes(warrantyStatus(asset, today))).length,
+    expiring: filteredAssets.filter((asset) => warrantyStatus(asset, today) === 'EXPIRING').length,
+    expired: filteredAssets.filter((asset) => warrantyStatus(asset, today) === 'EXPIRED').length,
+    unknown: filteredAssets.filter((asset) => warrantyStatus(asset, today) === 'UNKNOWN').length,
+  };
+  const monthlyForecast = Array.from({ length: 12 }, (_, monthOffset) => {
+    const month = new Date(`${today}T00:00:00.000Z`);
+    month.setUTCDate(1);
+    month.setUTCMonth(month.getUTCMonth() + monthOffset);
+    const nextMonth = new Date(month);
+    nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+    const from = monthOffset === 0 ? today : month.toISOString().slice(0, 10);
+    const to = new Date(nextMonth.getTime() - 86400000).toISOString().slice(0, 10);
+    const count = filteredAssets.filter((asset) => asset.warranty_end && asset.warranty_end >= from && asset.warranty_end <= to).length;
+    return { label: month.toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }), count };
   });
-  return <div className="fade-in"><PageTitle eyebrow="Asset lifecycle / Coverage" title="Warranties" copy="Monitor expired coverage and warranties ending in the next 90 days." /><div className="stat-strip"><MiniStat label="Tracked warranties" value={warrantyAssets.length.toString()} tone="blue" /><MiniStat label="Expiring in 90 days" value={expiring.length.toString()} tone="amber" /><MiniStat label="Expired" value={expired.length.toString()} tone="red" /></div><section className="panel table-panel full-panel"><PanelHeader title="Warranty register" subtitle="Coverage is calculated from each asset’s recorded warranty end date" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Asset</th><th>Model</th><th>Custodian</th><th>Department</th><th>Warranty ends</th><th>Coverage</th></tr></thead><tbody>{warrantyAssets.map((asset) => { const end = new Date(`${asset.warranty_end}T00:00:00`); const isExpired = end < today; const isExpiring = !isExpired && end <= horizon; return <tr key={asset.id}><td><strong>{asset.asset_tag}</strong></td><td>{asset.manufacturer} {asset.model}</td><td>{asset.custodian}</td><td>{asset.department}</td><td>{formatDate(asset.warranty_end!)}</td><td><StatusBadge status={isExpired ? 'EXPIRED' : isExpiring ? 'EXPIRING_SOON' : 'COVERED'} /></td></tr>; })}</tbody></table>{warrantyAssets.length === 0 && <EmptyState text="No warranty dates are recorded on active assets." />}</div></section></div>;
+  const maxForecast = Math.max(...monthlyForecast.map(({ count }) => count), 1);
+  const manufacturerCoverage = manufacturers
+    .filter((manufacturer) => manufacturerFilter === 'ALL' || manufacturer === manufacturerFilter)
+    .map((manufacturer) => {
+      const group = filteredAssets.filter((asset) => asset.manufacturer === manufacturer);
+      return {
+        manufacturer,
+        total: group.length,
+        covered: group.filter((asset) => ['ACTIVE', 'EXPIRING'].includes(warrantyStatus(asset, today))).length,
+        expired: group.filter((asset) => warrantyStatus(asset, today) === 'EXPIRED').length,
+        unknown: group.filter((asset) => warrantyStatus(asset, today) === 'UNKNOWN').length,
+      };
+    }).filter((group) => group.total > 0);
+  const lifecycleGroups = [
+    { label: '<1yr', matches: (years: number) => years < 1 },
+    { label: '1-3yr', matches: (years: number) => years >= 1 && years < 3 },
+    { label: '3-5yr', matches: (years: number) => years >= 3 && years < 5 },
+    { label: '5yr+', matches: (years: number) => years >= 5 },
+  ].map(({ label, matches }) => ({
+    label,
+    count: filteredAssets.filter((asset) => asset.warranty_start && matches((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${asset.warranty_start}T00:00:00Z`)) / (365.25 * 86400000))).length,
+  }));
+  lifecycleGroups.push({ label: 'Unknown', count: filteredAssets.filter((asset) => !asset.warranty_start).length });
+  const exportRows = filteredAssets.map((asset) => [
+    asset.asset_tag, asset.manufacturer, asset.model, asset.serial_number, asset.category, asset.custodian,
+    asset.department, asset.warranty_start || '', asset.warranty_end || '', asset.status, warrantyStatus(asset, today),
+  ]);
+  const exportHeaders = ['Asset Tag', 'Manufacturer', 'Model', 'Serial Number', 'Category', 'Custodian', 'Department', 'Warranty Start', 'Warranty End', 'Asset Status', 'Warranty Status'];
+  const downloadCsv = () => {
+    const escapeCell = (value: string) => {
+      const safeValue = /^[=+\-@]/.test(value) ? `'${value}` : value;
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    };
+    const csv = [exportHeaders, ...exportRows].map((row) => row.map(escapeCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'warranty-report.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+  const downloadExcel = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (manufacturerFilter !== 'ALL') params.set('manufacturer', manufacturerFilter);
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      const blob = await api.download(`/api/assets/warranty-report/export?${params.toString()}`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'warranty-report.xlsx';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not download the warranty report.');
+    } finally {
+      setExporting(false);
+    }
+  };
+  const panelTitle = {
+    COMPLIANCE: 'Warranty Compliance',
+    FORECAST: 'Expiration Forecast',
+    MANUFACTURER: 'Coverage by Manufacturer',
+    LIFECYCLE: 'Asset Lifecycle',
+  }[reportTab];
+
+  return <div className="fade-in warranty-report">
+    <div className="page-heading">
+      <div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Reports</p><h1>Warranty Reports</h1><p className="heading-copy">Compliance, forecast, coverage and lifecycle from your registered assets.</p></div>
+      <div className="heading-actions warranty-interlinks"><button className="button button-secondary" onClick={onOpenInventory}><Archive size={16} /> Inventory</button><button className="button button-secondary" onClick={onOpenAssets}><Box size={16} /> Asset register</button></div>
+    </div>
+    <section className="panel warranty-filter-panel">
+      <label>Manufacturer<select value={manufacturerFilter} onChange={(event) => setManufacturerFilter(event.target.value)}><option value="ALL">All manufacturers</option>{manufacturers.map((manufacturer) => <option key={manufacturer}>{manufacturer}</option>)}</select></label>
+      <label>Warranty Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'ALL' | WarrantyStatus)}><option value="ALL">All statuses</option><option value="ACTIVE">Active</option><option value="EXPIRING">Expiring within 30 days</option><option value="EXPIRED">Expired</option><option value="UNKNOWN">Unknown</option></select></label>
+      <span className="warranty-scope-count">{filteredAssets.length} assets in scope</span>
+    </section>
+    <div className="stat-strip warranty-report-stats">
+      <MiniStat label="Total" value={counts.total.toString()} tone="blue" />
+      <MiniStat label="Active" value={counts.active.toString()} tone="teal" />
+      <MiniStat label="Expiring ≤30d" value={counts.expiring.toString()} tone="amber" />
+      <MiniStat label="Expired" value={counts.expired.toString()} tone="red" />
+      <MiniStat label="Unknown" value={counts.unknown.toString()} tone="gray" />
+    </div>
+    <section className="panel warranty-report-panel">
+      <div className="warranty-report-tabs" role="tablist" aria-label="Warranty report views">
+        {([
+          ['COMPLIANCE', 'Compliance'],
+          ['FORECAST', 'Expiration Forecast'],
+          ['MANUFACTURER', 'Coverage by Manufacturer'],
+          ['LIFECYCLE', 'Lifecycle'],
+        ] as const).map(([key, label]) => <button key={key} role="tab" aria-selected={reportTab === key} className={reportTab === key ? 'selected' : ''} onClick={() => setReportTab(key)}>{label}</button>)}
+      </div>
+      <div className="warranty-report-body" role="tabpanel">
+        <div className="warranty-report-panel-heading"><div><h2>{panelTitle}</h2><p>{reportTab === 'COMPLIANCE' ? 'Registered asset coverage based on warranty dates.' : reportTab === 'FORECAST' ? 'Expirations grouped by month for the next 12 months.' : reportTab === 'MANUFACTURER' ? 'Coverage status grouped by manufacturer.' : 'Age of warranty coverage, grouped by recorded warranty start.'}</p></div><div className="warranty-export-actions"><button className="button button-secondary" onClick={() => window.print()}>PDF</button><button className="button button-secondary" onClick={() => void downloadExcel()} disabled={exporting}>{exporting ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Excel</button><button className="button button-secondary" onClick={downloadCsv}><Download size={14} /> CSV</button></div></div>
+        {error && <div className="auth-message module-error" role="alert">{error}</div>}
+        {reportTab === 'COMPLIANCE' && <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Make</th><th>Model</th><th>Serial</th><th>Warranty End</th><th>Asset Status</th><th>Coverage</th><th></th></tr></thead><tbody>{filteredAssets.map((asset) => { const coverage = warrantyStatus(asset, today); return <tr key={asset.id}><td>{asset.manufacturer}</td><td>{asset.model}</td><td>{asset.serial_number}</td><td>{asset.warranty_end ? formatDate(asset.warranty_end) : '—'}</td><td><StatusBadge status={asset.status} /></td><td><StatusBadge status={coverage === 'ACTIVE' ? 'COVERED' : coverage === 'EXPIRING' ? 'EXPIRING_SOON' : coverage} /></td><td><button className="row-action" onClick={() => onOpenAsset(asset)}><ArrowUpRight size={14} /> Open asset</button></td></tr>; })}</tbody></table>{filteredAssets.length === 0 && <EmptyState text="No registered assets match these warranty filters." />}</div>}
+        {reportTab === 'FORECAST' && <div className="warranty-forecast" aria-label="Asset warranty expirations by month">{monthlyForecast.map(({ label, count }) => <div className="warranty-forecast-row" key={label}><span>{label}</span><div className="warranty-forecast-track"><span style={{ width: `${count ? Math.max((count / maxForecast) * 100, 4) : 0}%` }} /></div><strong>{count}</strong></div>)}</div>}
+        {reportTab === 'MANUFACTURER' && <div className="warranty-group-list">{manufacturerCoverage.map((group) => <article className="warranty-group-row" key={group.manufacturer}><div className="warranty-group-title"><strong>{group.manufacturer}</strong><span>{group.total} asset{group.total === 1 ? '' : 's'}</span></div><div className="warranty-group-track"><span className="covered-segment" style={{ width: `${group.total ? (group.covered / group.total) * 100 : 0}%` }} /><span className="expired-segment" style={{ width: `${group.total ? (group.expired / group.total) * 100 : 0}%` }} /></div><div className="warranty-group-legend"><span><i className="covered-segment" /> Covered {group.covered}</span><span><i className="expired-segment" /> Expired {group.expired}</span><span>Unknown {group.unknown}</span></div></article>)}{manufacturerCoverage.length === 0 && <EmptyState text="No manufacturers match these warranty filters." />}</div>}
+        {reportTab === 'LIFECYCLE' && <div className="warranty-forecast" aria-label="Assets by warranty start age">{lifecycleGroups.map(({ label, count }) => <div className="warranty-forecast-row" key={label}><span>{label}</span><div className="warranty-forecast-track"><span style={{ width: `${count ? Math.max((count / Math.max(...lifecycleGroups.map((item) => item.count), 1)) * 100, 4) : 0}%` }} /></div><strong>{count}</strong></div>)}</div>}
+      </div>
+    </section>
+  </div>;
 }
 
 function WriteOffView({ assets, requests, user, onSaved }: { assets: Asset[]; requests: WriteOffRequest[]; user: AppUser; onSaved: () => void }) {
@@ -920,20 +1386,21 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
   const [profileError, setProfileError] = useState<string | null>(null);
   const isAdmin = user.role === 'admin';
 
-  useEffect(() => {
-    let active = true;
-    api.get<WorkspaceSettings>('/api/settings')
-      .then((result) => {
-        if (active) setSettings(result);
-      })
-      .catch((err: unknown) => {
-        if (active) setError(err instanceof ApiError ? err.message : 'Could not load workspace settings.');
-      })
-      .finally(() => {
-        if (active) setLoadingSettings(false);
-      });
-    return () => { active = false; };
+  const loadSettings = useCallback(async () => {
+    setLoadingSettings(true);
+    setError(null);
+    try {
+      setSettings(await api.get<WorkspaceSettings>('/api/settings'));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not load workspace settings.');
+    } finally {
+      setLoadingSettings(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   const updateSetting = <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]) => {
     setSettings((current) => current ? { ...current, [key]: value } : current);
@@ -975,7 +1442,7 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
   };
 
   if (loadingSettings) return <LoadingState />;
-  if (!settings) return <ErrorState onRetry={() => window.location.reload()} />;
+  if (!settings) return <div className="state-card error-state"><CircleAlert size={25} /><strong>Settings unavailable</strong><span>{error || 'We could not retrieve workspace settings.'}</span><button className="button button-primary" onClick={() => void loadSettings()}><RefreshCw size={16} /> Try again</button></div>;
 
   const textInput = (label: string, key: StringSetting, type = 'text', required = false) => (
     <label key={key}>{label}<input type={type} required={required} disabled={!isAdmin} value={settings[key]} onChange={(event) => updateSetting(key, event.target.value)} /></label>
@@ -1207,7 +1674,7 @@ function AssistantView({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   </div>;
 }
 
-function AssetTable({ assets, compact = false, onManage }: { assets: Asset[]; compact?: boolean; onManage?: (asset: Asset) => void }) { return <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Asset</th><th>Category</th><th>Custodian</th><th>Location</th><th>Status</th>{!compact && <th>Warranty</th>}<th></th></tr></thead><tbody>{assets.map((asset) => <tr key={asset.id}><td><div className="asset-cell"><div className={`asset-type-icon ${asset.category.toLowerCase().replace(' ', '-')}`}><Laptop size={16} /></div><div><strong>{asset.asset_tag}</strong><span>{asset.manufacturer} {asset.model}</span></div></div></td><td>{asset.category}</td><td><div className="person-cell"><div className="avatar avatar-small">{initials(asset.custodian)}</div><span>{asset.custodian}</span></div></td><td>{asset.location}</td><td><StatusBadge status={asset.status} /></td>{!compact && <td>{asset.warranty_end ? formatDate(asset.warranty_end) : '—'}</td>}<td>{onManage ? <button className="row-action" onClick={() => onManage(asset)}><Activity size={14} /> History</button> : <button className="row-more" aria-label={`More options for ${asset.asset_tag}`}>•••</button>}</td></tr>)}</tbody></table>{assets.length === 0 && <EmptyState text="No assets match this search." />}</div>; }
+function AssetTable({ assets, compact = false, onManage, onOpenWarranties }: { assets: Asset[]; compact?: boolean; onManage?: (asset: Asset) => void; onOpenWarranties?: () => void }) { return <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Asset</th><th>Category</th><th>Custodian</th><th>Location</th><th>Status</th>{!compact && <th>Warranty</th>}<th></th></tr></thead><tbody>{assets.map((asset) => <tr key={asset.id}><td><div className="asset-cell"><div className={`asset-type-icon ${asset.category.toLowerCase().replace(' ', '-')}`}><Laptop size={16} /></div><div><strong>{asset.asset_tag}</strong><span>{asset.manufacturer} {asset.model}</span></div></div></td><td>{asset.category}</td><td><div className="person-cell"><div className="avatar avatar-small">{initials(asset.custodian)}</div><span>{asset.custodian}</span></div></td><td>{asset.location}</td><td><StatusBadge status={asset.status} /></td>{!compact && <td>{onOpenWarranties ? <button className="warranty-date-link" onClick={onOpenWarranties}>{asset.warranty_end ? formatDate(asset.warranty_end) : 'Not recorded'}</button> : asset.warranty_end ? formatDate(asset.warranty_end) : '—'}</td>}<td>{onManage ? <button className="row-action" onClick={() => onManage(asset)}><Activity size={14} /> History</button> : <button className="row-more" aria-label={`More options for ${asset.asset_tag}`}>•••</button>}</td></tr>)}</tbody></table>{assets.length === 0 && <EmptyState text="No assets match this search." />}</div>; }
 
 const assetActionLabels: Record<AssetEventType, string> = {
   ASSIGNED: 'Assign',
@@ -1293,7 +1760,8 @@ function AssetLifecycleDialog({ asset, canManage, onClose, onSaved }: { asset: A
 
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card asset-lifecycle-card" role="dialog" aria-modal="true" aria-labelledby="asset-lifecycle-title">
     <div className="modal-header"><div><p className="eyebrow">Asset lifecycle</p><h2 id="asset-lifecycle-title">{currentAsset.asset_tag}</h2><span className="asset-modal-model">{currentAsset.manufacturer} {currentAsset.model}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close asset history"><X size={18} /></button></div>
-    <div className="asset-detail-grid"><div><span>Status</span><StatusBadge status={currentAsset.status} /></div><div><span>Custodian</span><strong>{currentAsset.custodian}</strong></div><div><span>Location</span><strong>{currentAsset.location}</strong></div><div><span>Condition</span><strong>{currentAsset.condition.toLowerCase()}</strong></div><div><span>Last audited</span><strong>{currentAsset.last_audited_at ? formatDate(currentAsset.last_audited_at) : 'Not audited'}</strong></div><div><span>Warranty end</span><strong>{currentAsset.warranty_end ? formatDate(currentAsset.warranty_end) : 'Not recorded'}</strong></div></div>
+    <div className="asset-detail-grid"><div><span>Status</span><StatusBadge status={currentAsset.status} /></div><div><span>Custodian</span><strong>{currentAsset.custodian}</strong></div><div><span>Location</span><strong>{currentAsset.location}</strong></div><div><span>Condition</span><strong>{currentAsset.condition.toLowerCase()}</strong></div><div><span>Last audited</span><strong>{currentAsset.last_audited_at ? formatDate(currentAsset.last_audited_at) : 'Not audited'}</strong></div><div><span>Warranty start</span><strong>{currentAsset.warranty_start ? formatDate(currentAsset.warranty_start) : 'Not recorded'}</strong></div><div><span>Warranty end</span><strong>{currentAsset.warranty_end ? formatDate(currentAsset.warranty_end) : 'Not recorded'}</strong></div></div>
+    <WarrantyLookupLink manufacturer={currentAsset.manufacturer} serialNumber={currentAsset.serial_number} />
     {canManage && <section className="lifecycle-actions"><div className="lifecycle-section-heading"><div><strong>Available actions</strong><span>Changes are recorded in the asset history.</span></div></div><div className="lifecycle-action-list">{actions.map((item) => <button key={item} className="button button-secondary" onClick={() => beginAction(item)} disabled={busy}>{item === 'MAINTENANCE_STARTED' || item === 'MAINTENANCE_COMPLETED' ? <Wrench size={15} /> : item === 'AUDITED' ? <ClipboardCheck size={15} /> : <Activity size={15} />}{assetActionLabels[item]}</button>)}</div></section>}
     {action && <form className="lifecycle-form" onSubmit={submitAction}><div className="lifecycle-section-heading"><div><strong>{assetActionLabels[action]}</strong><span>Enter the details to record this lifecycle event.</span></div></div>
       {(action === 'ASSIGNED' || action === 'RETURNED' || action === 'TRANSFERRED') && <label>{action === 'RETURNED' ? 'Received by' : action === 'TRANSFERRED' ? 'New custodian' : 'Assign to'}<input required value={form.custodian} onChange={(event) => update('custodian', event.target.value)} placeholder="Full name or team" /></label>}
@@ -1483,6 +1951,7 @@ function InvoiceUploadModal({ onClose, onSaved }: { onClose: () => void; onSaved
   const [extraction, setExtraction] = useState<InvoiceExtraction | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ invoice_number: '', vendor: '', purchase_order: '', invoice_date: '', total: '' });
+  const [usedFallback, setUsedFallback] = useState(false);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!file) return;
@@ -1511,6 +1980,7 @@ function InvoiceUploadModal({ onClose, onSaved }: { onClose: () => void; onSaved
       });
       setExtraction(result.extraction);
       setDocumentId(documentId);
+      setUsedFallback(Boolean(result.extraction.review_reason?.includes('local OCR')));
       setDraft({
         invoice_number: result.extraction.invoice_number || '',
         vendor: result.extraction.vendor || '',
@@ -1569,7 +2039,7 @@ function InvoiceUploadModal({ onClose, onSaved }: { onClose: () => void; onSaved
   const bankDetails = extraction?.bank_details;
   const assetDetails = extraction?.asset_details ?? [];
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><div className="modal-card invoice-upload-card" role="dialog" aria-modal="true" aria-labelledby="invoice-upload-title">
-    <div className="modal-header"><div><p className="eyebrow">AI invoice processing</p><h2 id="invoice-upload-title">Upload Invoice</h2><span className="invoice-modal-subtitle">AI will scan and extract invoice details for your review.</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div>
+    <div className="modal-header"><div><p className="eyebrow">{usedFallback ? 'Local OCR extraction' : 'AI invoice processing'}</p><h2 id="invoice-upload-title">Upload Invoice</h2><span className="invoice-modal-subtitle">{usedFallback ? 'AI was unavailable, so invoice fields were read locally. Review every field before approving.' : 'AI will scan and extract invoice details for your review.'}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div>
     {extraction ? <div className="extraction-result">
       <div className="ai-result-banner"><Sparkles size={18} /><div><strong>Review extracted details</strong><span>{extraction.confidence}% confidence · Check the fields before adding the invoice</span></div></div>
       <div className="form-grid invoice-review-fields"><label>Invoice number<input required value={draft.invoice_number} onChange={(event) => setDraft({ ...draft, invoice_number: event.target.value })} /></label><label>Vendor name<input required value={draft.vendor} onChange={(event) => setDraft({ ...draft, vendor: event.target.value })} /></label><label>PO number<input value={draft.purchase_order} onChange={(event) => setDraft({ ...draft, purchase_order: event.target.value })} /></label><label>Invoice date<input type="date" value={draft.invoice_date} onChange={(event) => setDraft({ ...draft, invoice_date: event.target.value })} /></label><label>Total amount<input required type="number" min="0" step="0.01" value={draft.total} onChange={(event) => setDraft({ ...draft, total: event.target.value })} /></label><label>Currency<input value={extraction.currency || 'INR'} readOnly /></label></div>
@@ -1618,14 +2088,14 @@ function readAsDataUrl(file: File) { return new Promise<string>((resolve, reject
 function AssetModal({ userName, department, onClose, onSaved }: { userName: string; department: string; onClose: () => void; onSaved: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ asset_tag: '', category: 'Laptop', manufacturer: '', model: '', serial_number: '', custodian: userName, location: '', department, purchase_cost: '', warranty_end: '' });
+  const [form, setForm] = useState({ asset_tag: '', category: 'Laptop', manufacturer: '', model: '', serial_number: '', custodian: userName, location: '', department, purchase_cost: '', warranty_start: '', warranty_end: '' });
   const update = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      await api.post('/api/assets', { ...form, purchase_cost: Number(form.purchase_cost), warranty_end: form.warranty_end || null });
+      await api.post('/api/assets', { ...form, purchase_cost: Number(form.purchase_cost), warranty_start: form.warranty_start || null, warranty_end: form.warranty_end || null });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not add the asset. Please try again.');
@@ -1633,7 +2103,7 @@ function AssetModal({ userName, department, onClose, onSaved }: { userName: stri
       setSaving(false);
     }
   };
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Asset register</p><h2>Add new asset</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label>Asset tag<input required value={form.asset_tag} onChange={(event) => update('asset_tag', event.target.value)} placeholder="IT-LAP-0007" /></label><label>Category<select value={form.category} onChange={(event) => update('category', event.target.value)}><option>Laptop</option><option>Monitor</option><option>Mobile</option><option>Network device</option><option>Server</option></select></label><label>Manufacturer<input required value={form.manufacturer} onChange={(event) => update('manufacturer', event.target.value)} placeholder="Dell" /></label><label>Model<input required value={form.model} onChange={(event) => update('model', event.target.value)} placeholder="Latitude 7450" /></label><label>Serial number<input required value={form.serial_number} onChange={(event) => update('serial_number', event.target.value)} placeholder="SN-000000" /></label><label>Department<input required value={form.department} onChange={(event) => update('department', event.target.value)} placeholder="Engineering" /></label><label>Custodian<input required value={form.custodian} onChange={(event) => update('custodian', event.target.value)} placeholder="Asset custodian" /></label><label>Location<input required value={form.location} onChange={(event) => update('location', event.target.value)} placeholder="HQ / Floor 1" /></label><label>Purchase cost<input required type="number" min="0" value={form.purchase_cost} onChange={(event) => update('purchase_cost', event.target.value)} placeholder="0" /></label><label>Warranty end<input type="date" value={form.warranty_end} onChange={(event) => update('warranty_end', event.target.value)} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Saving...' : 'Add asset'}</button></div></form></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Asset register</p><h2>Add new asset</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label>Asset tag<input required value={form.asset_tag} onChange={(event) => update('asset_tag', event.target.value)} placeholder="IT-LAP-0007" /></label><label>Category<select value={form.category} onChange={(event) => update('category', event.target.value)}><option>Laptop</option><option>Monitor</option><option>Mobile</option><option>Network device</option><option>Server</option></select></label><label>Manufacturer<input required value={form.manufacturer} onChange={(event) => update('manufacturer', event.target.value)} placeholder="Dell" /></label><label>Model<input required value={form.model} onChange={(event) => update('model', event.target.value)} placeholder="Latitude 7450" /></label><label>Serial number<input required value={form.serial_number} onChange={(event) => update('serial_number', event.target.value)} placeholder="SN-000000" /></label><label>Department<input required value={form.department} onChange={(event) => update('department', event.target.value)} placeholder="Engineering" /></label><label>Custodian<input required value={form.custodian} onChange={(event) => update('custodian', event.target.value)} placeholder="Asset custodian" /></label><label>Location<input required value={form.location} onChange={(event) => update('location', event.target.value)} placeholder="HQ / Floor 1" /></label><label>Purchase cost<input required type="number" min="0" value={form.purchase_cost} onChange={(event) => update('purchase_cost', event.target.value)} placeholder="0" /></label><label>Warranty start<input type="date" max={form.warranty_end || undefined} value={form.warranty_start} onChange={(event) => update('warranty_start', event.target.value)} /></label><label>Warranty end<input type="date" min={form.warranty_start || undefined} value={form.warranty_end} onChange={(event) => update('warranty_end', event.target.value)} /></label><div className="warranty-lookup-form-row"><span className="warranty-lookup-label">Manufacturer warranty lookup</span><WarrantyLookupLink manufacturer={form.manufacturer} serialNumber={form.serial_number} /></div></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Saving...' : 'Add asset'}</button></div></form></div>;
 }
 
 const ticketDueLabels: Record<Ticket['priority'], string> = { URGENT: 'Due today', HIGH: 'Due tomorrow', MEDIUM: 'Due in 3 days', LOW: 'Due next week' };

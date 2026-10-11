@@ -13,6 +13,7 @@ import { assetWorkflowsRouter } from './routes/asset-workflows.js';
 import { assistantRouter } from './routes/assistant.js';
 import { usersRouter } from './routes/users.js';
 import { settingsRouter } from './routes/settings.js';
+import { vendorsRouter } from './routes/vendors.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -31,6 +32,7 @@ app.use('/api/assets', assetsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/tickets', ticketsRouter);
 app.use('/api/purchase-requests', purchaseRequestsRouter);
+app.use('/api/vendors', vendorsRouter);
 app.use('/api/workflows', assetWorkflowsRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/users', usersRouter);

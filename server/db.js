@@ -136,6 +136,23 @@ CREATE TABLE IF NOT EXISTS it_purchase_requests (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS it_vendors (
+  id TEXT PRIMARY KEY,
+  legal_name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  contact_name TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  tax_id TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT '',
+  categories TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('PENDING_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED')) DEFAULT 'PENDING_REVIEW',
+  notes TEXT NOT NULL DEFAULT '',
+  submitted_by TEXT NOT NULL REFERENCES users(id),
+  reviewed_by TEXT REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS it_goods_receipts (
   id TEXT PRIMARY KEY,
   receipt_number TEXT NOT NULL UNIQUE,
@@ -179,6 +196,22 @@ CREATE TABLE IF NOT EXISTS it_employee_asset_requests (
   reviewer_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   review_note TEXT,
   reviewed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS it_employee_asset_assignments (
+  id TEXT PRIMARY KEY,
+  employee_name TEXT NOT NULL,
+  employee_id TEXT NOT NULL,
+  designation TEXT NOT NULL,
+  department TEXT NOT NULL,
+  asset_model TEXT NOT NULL,
+  serial_number TEXT NOT NULL,
+  ticket_no TEXT NOT NULL DEFAULT '',
+  doj TEXT NOT NULL,
+  remarks TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -255,10 +288,12 @@ CREATE INDEX IF NOT EXISTS it_assets_category_idx ON it_assets(category);
 CREATE INDEX IF NOT EXISTS it_invoices_status_idx ON it_invoices(status);
 CREATE INDEX IF NOT EXISTS it_tickets_status_priority_idx ON it_tickets(status, priority);
 CREATE INDEX IF NOT EXISTS it_purchase_requests_status_idx ON it_purchase_requests(status);
+CREATE INDEX IF NOT EXISTS it_vendors_status_idx ON it_vendors(status, legal_name);
 CREATE INDEX IF NOT EXISTS it_asset_events_asset_idx ON it_asset_events(asset_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS it_goods_receipts_po_idx ON it_goods_receipts(purchase_order);
 CREATE INDEX IF NOT EXISTS it_maintenance_asset_idx ON it_maintenance_records(asset_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS it_employee_asset_requests_user_idx ON it_employee_asset_requests(requester_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS it_employee_asset_assignments_employee_idx ON it_employee_asset_assignments(employee_id, employee_name);
 CREATE INDEX IF NOT EXISTS it_write_off_requests_asset_idx ON it_write_off_requests(asset_id, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS it_write_off_pending_asset_idx ON it_write_off_requests(asset_id) WHERE status = 'PENDING_APPROVAL';
 CREATE INDEX IF NOT EXISTS app_notifications_recipient_idx ON app_notifications(recipient_id, read_at, created_at DESC);

@@ -10,6 +10,7 @@ router.use(requireAuth);
 const STATUSES = ['ASSIGNED', 'AVAILABLE', 'UNDER_MAINTENANCE', 'QUARANTINED', 'RETIRED'];
 const CONDITIONS = ['NEW', 'GOOD', 'DAMAGED'];
 const WRITABLE = ['asset_tag', 'category', 'manufacturer', 'model', 'serial_number', 'status', 'condition', 'custodian', 'location', 'department', 'purchase_cost', 'warranty_start', 'warranty_end', 'purchase_order'];
+const WARRANTY_STATUSES = ['ACTIVE', 'EXPIRING', 'EXPIRED', 'UNKNOWN'];
 const ASSET_IMPORT_COLUMNS = [
   { key: 'asset_tag', header: 'Asset Tag', required: true },
   { key: 'category', header: 'Category', required: true },
@@ -26,6 +27,27 @@ const ASSET_IMPORT_COLUMNS = [
 ];
 const assetUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const MAX_IMPORT_ROWS = 1000;
+
+function parseWarrantyDate(value, label) {
+  if (value === undefined) return { value: undefined };
+  if (value === null || value === '') return { value: null };
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { error: `${label} must be a valid date.` };
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return { error: `${label} must be a valid date.` };
+  }
+  return { value };
+}
+
+function warrantyStatus(warrantyEnd, today = new Date().toISOString().slice(0, 10)) {
+  if (!warrantyEnd) return 'UNKNOWN';
+  if (warrantyEnd < today) return 'EXPIRED';
+  const horizon = new Date(`${today}T00:00:00.000Z`);
+  horizon.setUTCDate(horizon.getUTCDate() + 30);
+  return warrantyEnd <= horizon.toISOString().slice(0, 10) ? 'EXPIRING' : 'ACTIVE';
+}
 
 async function templateWorkbook() {
   const workbook = await XlsxPopulate.fromBlankAsync();
@@ -226,6 +248,47 @@ router.get('/', (req, res, next) => {
   }
 });
 
+router.get('/warranty-report/export', async (req, res, next) => {
+  try {
+    const manufacturer = typeof req.query.manufacturer === 'string' ? req.query.manufacturer : '';
+    const status = typeof req.query.status === 'string' ? req.query.status : '';
+    if (status && !WARRANTY_STATUSES.includes(status)) {
+      return res.status(400).json({ error: 'Select a valid warranty status.' });
+    }
+    const rows = getDb().prepare(
+      `SELECT asset_tag, manufacturer, model, serial_number, category, custodian, department,
+              warranty_start, warranty_end, status
+       FROM it_assets
+       WHERE status != 'RETIRED'
+       ORDER BY warranty_end IS NULL, warranty_end, asset_tag COLLATE NOCASE`,
+    ).all()
+      .filter((asset) => (!manufacturer || asset.manufacturer === manufacturer)
+        && (!status || warrantyStatus(asset.warranty_end) === status))
+      .map((asset) => ({ ...asset, warranty_status: warrantyStatus(asset.warranty_end) }));
+    const workbook = await XlsxPopulate.fromBlankAsync();
+    const sheet = workbook.sheet(0).name('Warranty Report');
+    const headers = ['Asset Tag', 'Manufacturer', 'Model', 'Serial Number', 'Category', 'Custodian', 'Department', 'Warranty Start', 'Warranty End', 'Asset Status', 'Warranty Status'];
+    const keys = ['asset_tag', 'manufacturer', 'model', 'serial_number', 'category', 'custodian', 'department', 'warranty_start', 'warranty_end', 'status', 'warranty_status'];
+    const lastColumn = String.fromCharCode(64 + headers.length);
+    sheet.range(`A1:${lastColumn}1`).value([headers]);
+    sheet.range(`A1:${lastColumn}1`).style({ bold: true, fill: '1F5874', fontColor: 'FFFFFF' });
+    sheet.autoFilter(sheet.range(`A1:${lastColumn}${Math.max(rows.length + 1, 1)}`));
+    sheet.freezePanes(0, 1);
+    headers.forEach((header, index) => {
+      sheet.column(String.fromCharCode(65 + index)).width(Math.min(Math.max(header.length + 4, 16), 32));
+    });
+    if (rows.length) {
+      sheet.range(`A2:${lastColumn}${rows.length + 1}`).value(rows.map((asset) => keys.map((key) => asset[key] ?? '')));
+    }
+    const buffer = await workbook.outputAsync();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="warranty-report.xlsx"');
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:id/events', (req, res, next) => {
   try {
     const db = getDb();
@@ -397,6 +460,13 @@ router.post('/', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
         return res.status(400).json({ error: `${field.replace(/_/g, ' ')} is required.` });
       }
     }
+    const warrantyStart = parseWarrantyDate(body.warranty_start, 'Warranty start');
+    const warrantyEnd = parseWarrantyDate(body.warranty_end, 'Warranty end');
+    if (warrantyStart.error) return res.status(400).json({ error: warrantyStart.error });
+    if (warrantyEnd.error) return res.status(400).json({ error: warrantyEnd.error });
+    if (warrantyStart.value && warrantyEnd.value && warrantyEnd.value < warrantyStart.value) {
+      return res.status(400).json({ error: 'Warranty end must be on or after warranty start.' });
+    }
     const db = getDb();
     const id = newId();
     const now = nowIso();
@@ -406,7 +476,7 @@ router.post('/', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
     ).run(
       id, body.asset_tag, body.category, body.manufacturer, body.model, body.serial_number,
       body.custodian, body.location, Number(body.purchase_cost) || 0,
-      body.warranty_start || null, body.warranty_end || null, body.purchase_order || null,
+      warrantyStart.value ?? null, warrantyEnd.value ?? null, body.purchase_order || null,
       body.department, now, now,
     );
     db.prepare(
@@ -432,6 +502,18 @@ router.put('/:id', requireRole('admin', 'it_asset_manager'), (req, res, next) =>
     const updates = {};
     for (const field of WRITABLE) {
       if (field in body) updates[field] = body[field];
+    }
+    for (const [field, label] of [['warranty_start', 'Warranty start'], ['warranty_end', 'Warranty end']]) {
+      if (field in updates) {
+        const parsed = parseWarrantyDate(updates[field], label);
+        if (parsed.error) return res.status(400).json({ error: parsed.error });
+        updates[field] = parsed.value;
+      }
+    }
+    const warrantyStart = updates.warranty_start === undefined ? existing.warranty_start : updates.warranty_start;
+    const warrantyEnd = updates.warranty_end === undefined ? existing.warranty_end : updates.warranty_end;
+    if (warrantyStart && warrantyEnd && warrantyEnd < warrantyStart) {
+      return res.status(400).json({ error: 'Warranty end must be on or after warranty start.' });
     }
     if (updates.status && updates.status !== existing.status) {
       return res.status(400).json({ error: 'Use an asset lifecycle action to change status so the change is recorded.' });
