@@ -15,16 +15,12 @@ const defaults = {
   logoUrl: '',
   primaryColor: '#1f5874',
   accentColor: '#e7ae56',
-  purchaseOrderPrefix: 'PO',
-  paymentTermsDays: 30,
-  requirePurchaseOrder: true,
-  approvalThreshold: 50000,
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   approvalLevels: 2,
   defaultApproverRole: 'approver',
   autoApproveLimit: 0,
   notificationsEmail: false,
   notificationsInApp: true,
-  notifyPurchaseRequests: true,
   notifyInvoices: true,
   notifyApprovals: true,
   notifySlaBreaches: true,
@@ -44,24 +40,25 @@ const defaults = {
 
 const stringFields = [
   'companyName', 'companyEmail', 'companyPhone', 'companyAddress', 'currency', 'timezone',
-  'logoUrl', 'primaryColor', 'accentColor', 'purchaseOrderPrefix', 'defaultApproverRole',
+  'logoUrl', 'primaryColor', 'accentColor', 'googleClientId', 'defaultApproverRole',
   'apEscalationEmail',
 ];
 const numberFields = [
-  'paymentTermsDays', 'approvalThreshold', 'approvalLevels', 'autoApproveLimit',
+  'approvalLevels', 'autoApproveLimit',
   'apEscalationAfterHours', 'apEscalationRepeatHours',
   'slaLowResponseHours', 'slaLowResolutionHours', 'slaMediumResponseHours', 'slaMediumResolutionHours',
   'slaHighResponseHours', 'slaHighResolutionHours', 'slaUrgentResponseHours', 'slaUrgentResolutionHours',
 ];
 const booleanFields = [
-  'requirePurchaseOrder', 'notificationsEmail', 'notificationsInApp',
-  'notifyPurchaseRequests', 'notifyInvoices', 'notifyApprovals', 'notifySlaBreaches', 'apEscalationEnabled',
+  'notificationsEmail', 'notificationsInApp',
+  'notifyInvoices', 'notifyApprovals', 'notifySlaBreaches', 'apEscalationEnabled',
 ];
 
 function readSettings() {
   const row = getDb().prepare("SELECT settings FROM workspace_settings WHERE id = 'workspace'").get();
   if (!row) return defaults;
-  return { ...defaults, ...JSON.parse(row.settings) };
+  const saved = JSON.parse(row.settings);
+  return Object.fromEntries(Object.keys(defaults).map((key) => [key, saved[key] ?? defaults[key]]));
 }
 
 function validateSettings(settings) {
@@ -83,15 +80,14 @@ function validateSettings(settings) {
   if (settings.companyName.length > 120 || settings.companyAddress.length > 2000) {
     return 'Company name or address is too long.';
   }
-  if (!/^[A-Z]{3}$/.test(settings.currency)) return 'Currency must be a 3-letter ISO code.';
-  if (!/^[A-Z]{2,8}$/.test(settings.purchaseOrderPrefix)) return 'Purchase order prefix must contain 2 to 8 letters.';
-  if (!Number.isInteger(settings.paymentTermsDays) || settings.paymentTermsDays < 0 || settings.paymentTermsDays > 365) {
-    return 'Payment terms must be between 0 and 365 days.';
+  if (settings.googleClientId.length > 255 || (settings.googleClientId && !/^[\w.-]+\.apps\.googleusercontent\.com$/.test(settings.googleClientId))) {
+    return 'Enter a valid Google OAuth Web Client ID.';
   }
+  if (!/^[A-Z]{3}$/.test(settings.currency)) return 'Currency must be a 3-letter ISO code.';
   if (!Number.isInteger(settings.approvalLevels) || settings.approvalLevels < 1 || settings.approvalLevels > 5) {
     return 'Approval levels must be between 1 and 5.';
   }
-  if (!['admin', 'approver', 'finance_officer', 'procurement_officer'].includes(settings.defaultApproverRole)) {
+  if (!['admin', 'approver', 'finance_officer'].includes(settings.defaultApproverRole)) {
     return 'Choose a valid default approver role.';
   }
   if (settings.apEscalationAfterHours < 1 || settings.apEscalationRepeatHours < 1) {

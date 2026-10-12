@@ -29,7 +29,6 @@ router.post('/chat', async (req, res, next) => {
       invoices: db.prepare(
         `SELECT status, COUNT(*) AS count FROM it_invoices GROUP BY status ORDER BY status`,
       ).all(),
-      pendingPurchaseRequests: db.prepare("SELECT COUNT(*) AS count FROM it_purchase_requests WHERE status = 'PENDING_APPROVAL'").get().count,
       pendingEmployeeAssetRequests: db.prepare("SELECT COUNT(*) AS count FROM it_employee_asset_requests WHERE status = 'PENDING_APPROVAL'").get().count,
       pendingWriteOffApprovals: db.prepare("SELECT COUNT(*) AS count FROM it_write_off_requests WHERE status = 'PENDING_APPROVAL'").get().count,
     };

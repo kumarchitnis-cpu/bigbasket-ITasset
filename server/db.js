@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { sendGmailMessage } from './gmail.js';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'server-data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
@@ -115,35 +116,6 @@ CREATE TABLE IF NOT EXISTS it_invoices (
   matched_at TEXT,
   approved_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS it_purchase_requests (
-  id TEXT PRIMARY KEY,
-  request_number TEXT NOT NULL UNIQUE,
-  title TEXT NOT NULL,
-  requester TEXT NOT NULL,
-  department TEXT NOT NULL,
-  amount REAL NOT NULL CHECK (amount >= 0),
-  status TEXT NOT NULL CHECK (status IN ('PENDING_APPROVAL', 'APPROVED', 'RETURNED', 'ORDERED')),
-  needed_by TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS it_vendors (
-  id TEXT PRIMARY KEY,
-  legal_name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-  contact_name TEXT NOT NULL DEFAULT '',
-  email TEXT NOT NULL DEFAULT '',
-  phone TEXT NOT NULL DEFAULT '',
-  tax_id TEXT NOT NULL DEFAULT '',
-  address TEXT NOT NULL DEFAULT '',
-  categories TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL CHECK (status IN ('PENDING_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED')) DEFAULT 'PENDING_REVIEW',
-  notes TEXT NOT NULL DEFAULT '',
-  submitted_by TEXT NOT NULL REFERENCES users(id),
-  reviewed_by TEXT REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS it_goods_receipts (
@@ -278,8 +250,6 @@ CREATE TABLE IF NOT EXISTS sequences (
 CREATE INDEX IF NOT EXISTS it_assets_status_idx ON it_assets(status);
 CREATE INDEX IF NOT EXISTS it_assets_category_idx ON it_assets(category);
 CREATE INDEX IF NOT EXISTS it_invoices_status_idx ON it_invoices(status);
-CREATE INDEX IF NOT EXISTS it_purchase_requests_status_idx ON it_purchase_requests(status);
-CREATE INDEX IF NOT EXISTS it_vendors_status_idx ON it_vendors(status, legal_name);
 CREATE INDEX IF NOT EXISTS it_asset_events_asset_idx ON it_asset_events(asset_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS it_goods_receipts_po_idx ON it_goods_receipts(purchase_order);
 CREATE INDEX IF NOT EXISTS it_maintenance_asset_idx ON it_maintenance_records(asset_id, created_at DESC);
@@ -308,7 +278,6 @@ export function ensureSchema() {
   if (!invoiceColumns.has('document_id')) {
     db.exec('ALTER TABLE it_invoices ADD COLUMN document_id TEXT');
   }
-  db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('purchase_request', 41)").run();
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('goods_receipt', 0)").run();
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('employee_asset_request', 0)").run();
 }
@@ -316,23 +285,29 @@ export function ensureSchema() {
 export function notify(recipientId, eventType, title, body, entityType = null, entityId = null, dedupeKey = `${eventType}:${entityId || newId()}`) {
   const db = getDb();
   const settingsRow = db.prepare("SELECT settings FROM workspace_settings WHERE id = 'workspace'").get();
-  if (settingsRow) {
-    const settings = JSON.parse(settingsRow.settings);
-    if (!settings.notificationsInApp) return;
-    const event = eventType.toUpperCase();
-    const categoryEnabled = [
-      [/PURCHASE|PROCUREMENT/, 'notifyPurchaseRequests'],
-      [/INVOICE|AP_/, 'notifyInvoices'],
-      [/APPROVAL|REQUEST|WRITE_OFF/, 'notifyApprovals'],
-      [/SLA|ESCALATION/, 'notifySlaBreaches'],
-    ].find(([pattern]) => pattern.test(event));
-    if (categoryEnabled && settings[categoryEnabled[1]] === false) return;
-  }
-  db
-    .prepare(
+  const settings = settingsRow ? JSON.parse(settingsRow.settings) : { notificationsInApp: true, notificationsEmail: false };
+  const event = eventType.toUpperCase();
+  const categoryEnabled = [
+    [/INVOICE|AP_/, 'notifyInvoices'],
+    [/APPROVAL|REQUEST|WRITE_OFF/, 'notifyApprovals'],
+    [/SLA|ESCALATION/, 'notifySlaBreaches'],
+  ].find(([pattern]) => pattern.test(event));
+  if (categoryEnabled && settings[categoryEnabled[1]] === false) return;
+
+  if (settings.notificationsInApp !== false) {
+    const result = db.prepare(
       `INSERT INTO app_notifications (id, recipient_id, event_type, title, body, entity_type, entity_id, dedupe_key)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (recipient_id, dedupe_key) DO NOTHING`,
-    )
-    .run(newId(), recipientId, eventType, title, body, entityType, entityId, dedupeKey);
+    ).run(newId(), recipientId, eventType, title, body, entityType, entityId, dedupeKey);
+    if (result.changes === 0) return;
+  }
+
+  if (settings.notificationsEmail === true) {
+    const recipient = db.prepare('SELECT email FROM users WHERE id = ? AND active = 1').get(recipientId);
+    if (recipient?.email) {
+      void sendGmailMessage(recipient.email, title, body)
+        .catch((error) => console.error('Notification email delivery failed:', error.message));
+    }
+  }
 }

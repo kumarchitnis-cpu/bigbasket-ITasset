@@ -29,16 +29,12 @@ export type WorkspaceSettings = {
   logoUrl: string;
   primaryColor: string;
   accentColor: string;
-  purchaseOrderPrefix: string;
-  paymentTermsDays: number;
-  requirePurchaseOrder: boolean;
-  approvalThreshold: number;
+  googleClientId: string;
   approvalLevels: number;
   defaultApproverRole: string;
   autoApproveLimit: number;
   notificationsEmail: boolean;
   notificationsInApp: boolean;
-  notifyPurchaseRequests: boolean;
   notifyInvoices: boolean;
   notifyApprovals: boolean;
   notifySlaBreaches: boolean;
@@ -89,7 +85,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });
 
-  const isSignInRequest = /^\/api\/auth\/(signin|signup|google)$/.test(path);
+  const isSignInRequest = /^\/api\/auth\/(signin|signup|google|google-config)$/.test(path);
   if (response.status === 401 && !isSignInRequest) {
     localStorage.removeItem('itam_token');
     unauthorizedHandler?.();

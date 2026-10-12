@@ -5,13 +5,11 @@ import { ensureSchema } from './db.js';
 import { authRouter } from './routes/auth.js';
 import { assetsRouter } from './routes/assets.js';
 import { invoicesRouter } from './routes/invoices.js';
-import { purchaseRequestsRouter } from './routes/purchase-requests.js';
 import { miscRouter } from './routes/misc.js';
 import { assetWorkflowsRouter } from './routes/asset-workflows.js';
 import { assistantRouter } from './routes/assistant.js';
 import { usersRouter } from './routes/users.js';
 import { settingsRouter } from './routes/settings.js';
-import { vendorsRouter } from './routes/vendors.js';
 import { integrationsRouter } from './routes/integrations.js';
 
 const app = express();
@@ -29,8 +27,6 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/assets', assetsRouter);
 app.use('/api/invoices', invoicesRouter);
-app.use('/api/purchase-requests', purchaseRequestsRouter);
-app.use('/api/vendors', vendorsRouter);
 app.use('/api/workflows', assetWorkflowsRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/users', usersRouter);

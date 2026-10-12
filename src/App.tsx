@@ -9,17 +9,17 @@ import {
   Box,
   BriefcaseBusiness,
   Bot,
+  Building2,
   Check,
   ChevronDown,
   CircleAlert,
   CircleDollarSign,
-  ClipboardList,
   ClipboardCheck,
-  Building2,
   Download,
   FileText,
   Laptop,
   LayoutDashboard,
+  Mail,
   Loader2,
   LogOut,
   Menu,
@@ -112,33 +112,6 @@ type Invoice = {
   file_visible: boolean;
 };
 
-type PurchaseRequest = {
-  id: string;
-  request_number: string;
-  title: string;
-  requester: string;
-  department: string;
-  amount: number;
-  status: 'PENDING_APPROVAL' | 'APPROVED' | 'RETURNED' | 'ORDERED';
-  needed_by: string;
-  created_at: string;
-};
-
-type Vendor = {
-  id: string;
-  legal_name: string;
-  contact_name: string;
-  email: string;
-  phone: string;
-  tax_id: string;
-  address: string;
-  categories: string;
-  status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
-  notes: string;
-  submitted_by_name?: string;
-  created_at: string;
-};
-
 type EmployeeAssetRequest = {
   id: string;
   request_number: string;
@@ -218,7 +191,6 @@ type ManagedUser = AppUser & { created_at: string };
 const workspaceRoles = [
   'admin',
   'it_asset_manager',
-  'procurement_officer',
   'finance_officer',
   'approver',
   'employee',
@@ -227,13 +199,11 @@ const workspaceRoles = [
 
 const invoiceStatuses: Invoice['status'][] = ['PENDING', 'UNDER_REVIEW', 'PROCESSED', 'ON_HOLD', 'REJECTED'];
 
-type Tab = 'Overview' | 'Assets' | 'Procurement' | 'Vendors' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'User Management';
+type Tab = 'Overview' | 'Assets' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'User Management';
 
 const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
   { label: 'Overview', icon: LayoutDashboard },
   { label: 'AI Assistant', icon: Bot },
-  { label: 'Procurement', icon: ClipboardList },
-  { label: 'Vendors', icon: Building2 },
   { label: 'Invoices', icon: FileText },
   { label: 'Assets', icon: Box },
   { label: 'Emp Asset Mgmt', icon: Users },
@@ -303,8 +273,6 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [employeeRequests, setEmployeeRequests] = useState<EmployeeAssetRequest[]>([]);
   const [writeOffRequests, setWriteOffRequests] = useState<WriteOffRequest[]>([]);
   const [inventoryReceipts, setInventoryReceipts] = useState<InventoryReceipt[]>([]);
@@ -367,12 +335,9 @@ function App() {
     else setLoading(true);
     setError(null);
     try {
-      const canViewVendors = ['admin', 'procurement_officer', 'approver'].includes(user?.role ?? '');
-      const [assetData, invoiceData, requestData, vendorData, employeeRequestData, writeOffData, receiptData, notificationData, dashboardData] = await Promise.all([
+      const [assetData, invoiceData, employeeRequestData, writeOffData, receiptData, notificationData, dashboardData] = await Promise.all([
         api.get<Asset[]>('/api/assets'),
         api.get<Invoice[]>('/api/invoices'),
-        api.get<PurchaseRequest[]>('/api/purchase-requests'),
-        canViewVendors ? api.get<Vendor[]>('/api/vendors') : Promise.resolve([]),
         api.get<EmployeeAssetRequest[]>('/api/workflows/employee-requests'),
         api.get<WriteOffRequest[]>('/api/workflows/write-offs'),
         api.get<InventoryReceipt[]>('/api/receipts'),
@@ -381,8 +346,6 @@ function App() {
       ]);
       setAssets(assetData);
       setInvoices(invoiceData);
-      setPurchaseRequests(requestData);
-      setVendors(vendorData);
       setEmployeeRequests(employeeRequestData);
       setWriteOffRequests(writeOffData);
       setInventoryReceipts(receiptData);
@@ -422,11 +385,10 @@ function App() {
       available: assets.filter((asset) => asset.status === 'AVAILABLE').length,
       maintenance: assets.filter((asset) => asset.status === 'UNDER_MAINTENANCE').length,
       warranty: warrantyCount,
-      approvals: purchaseRequests.filter((request) => request.status === 'PENDING_APPROVAL').length,
       invoiceExceptions: invoices.filter((invoice) => invoice.status === 'UNDER_REVIEW' || invoice.status === 'ON_HOLD').length,
       unreadNotifications: notifications.filter((notification) => !notification.read_at).length,
     };
-  }, [assets, invoices, notifications, purchaseRequests]);
+  }, [assets, invoices, notifications]);
 
   const searchResults = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -469,7 +431,7 @@ function App() {
           <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation menu"><X size={18} /></button>
         </div>
         <div className="nav-section-label">Workspace</div>
-        <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => (label !== 'User Management' || user.role === 'admin') && (label !== 'Vendors' || ['admin', 'procurement_officer', 'approver'].includes(user.role))).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
+        <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => (label !== 'User Management' || user.role === 'admin')).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
         <div className="sidebar-bottom"><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
@@ -478,13 +440,11 @@ function App() {
 
         <div className="page-content">
           {activeTab === 'Settings' ? <SettingsView user={user} onSaved={setUser} /> : loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
-            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} requests={purchaseRequests} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenEmployeeRequests={() => showTab('Emp Asset Mgmt')} onOpenWarranties={() => showTab('Warranties')} />}
+            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenEmployeeRequests={() => showTab('Emp Asset Mgmt')} onOpenWarranties={() => showTab('Warranties')} />}
             {activeTab === 'Assets' && <AssetsView assets={filteredAssets} user={user} onAdd={() => setAssetModalOpen(true)} onRefresh={() => void loadData(true)} onImportComplete={async () => { setQuery(''); setRefreshing(true); try { setAssets(await api.get<Asset[]>('/api/assets')); } finally { setRefreshing(false); } }} query={query} openAssetId={pendingAssetId} onAssetOpened={() => setPendingAssetId(null)} onOpenWarranties={() => showTab('Warranties')} />}
-            {activeTab === 'Procurement' && <ProcurementView requests={purchaseRequests} userName={user.full_name} department={user.department} onSaved={() => void loadData(true)} />}
-            {activeTab === 'Vendors' && <VendorsView vendors={vendors} invoices={invoices} user={user} onSaved={() => void loadData(true)} onOpenProcurement={() => showTab('Procurement')} onOpenInvoices={() => showTab('Invoices')} />}
-            {activeTab === 'Invoices' && <InvoicesView invoices={invoices} vendors={vendors} user={user} query={query} onSaved={() => void loadData(true)} />}
+            {activeTab === 'Invoices' && <InvoicesView invoices={invoices} user={user} query={query} onSaved={() => void loadData(true)} />}
             {activeTab === 'Emp Asset Mgmt' && <EmployeeAssetsView requests={employeeRequests} assets={assets} user={user} onSaved={() => void loadData(true)} />}
-            {activeTab === 'Inventory' && <InventoryView assets={assets} receipts={inventoryReceipts} vendors={vendors} invoices={invoices} user={user} onSaved={() => void loadData(true)} />}
+            {activeTab === 'Inventory' && <InventoryView assets={assets} receipts={inventoryReceipts} user={user} onSaved={() => void loadData(true)} />}
             {activeTab === 'Warranties' && <WarrantiesView assets={assets} onOpenAssets={() => showTab('Assets')} onOpenInventory={() => showTab('Inventory')} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} />}
             {activeTab === 'Write-Off' && <WriteOffView assets={assets} requests={writeOffRequests} user={user} onSaved={() => void loadData(true)} />}
             {activeTab === 'Notifications' && <NotificationsView notifications={notifications} onRead={async (id) => { await api.put(`/api/notifications/${id}/read`, {}); setNotifications((current) => current.map((notification) => notification.id === id ? { ...notification, read_at: new Date().toISOString() } : notification)); }} />}
@@ -499,63 +459,44 @@ function App() {
   );
 }
 
-function Overview({ assets, invoices, requests, employeeRequests, activity, onOpenAsset, onOpenAssets, onOpenInvoices, onOpenProcurement, onOpenEmployeeRequests, onOpenWarranties }: {
+function Overview({ assets, invoices, employeeRequests, activity, onOpenAsset, onOpenAssets, onOpenInvoices, onOpenEmployeeRequests, onOpenWarranties }: {
   assets: Asset[];
   invoices: Invoice[];
-  requests: PurchaseRequest[];
   employeeRequests: EmployeeAssetRequest[];
   activity: DashboardData;
   onOpenAsset: (asset: Asset) => void;
   onOpenAssets: () => void;
   onOpenInvoices: () => void;
-  onOpenProcurement: () => void;
   onOpenEmployeeRequests: () => void;
   onOpenWarranties: () => void;
 }) {
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
   const activeAssets = assets.filter((asset) => asset.status !== 'RETIRED').length;
-  const orderedRequests = requests.filter((request) => request.status === 'ORDERED').length;
-  const requestStatuses = [
-    { label: 'Awaiting approval', value: requests.filter((request) => request.status === 'PENDING_APPROVAL').length, color: 'amber' },
-    { label: 'Approved', value: requests.filter((request) => request.status === 'APPROVED').length, color: 'teal' },
-    { label: 'Ordered', value: orderedRequests, color: 'blue' },
-    { label: 'Returned', value: requests.filter((request) => request.status === 'RETURNED').length, color: 'gray' },
-  ];
   const employeeRequestStatuses = [
     { label: 'Awaiting approval', value: employeeRequests.filter((request) => request.status === 'PENDING_APPROVAL').length, color: 'amber' },
     { label: 'Approved', value: employeeRequests.filter((request) => request.status === 'APPROVED').length, color: 'teal' },
     { label: 'Rejected', value: employeeRequests.filter((request) => request.status === 'REJECTED').length, color: 'gray' },
   ];
-  const departmentItems = Array.from(new Set(requests.map((request) => request.department)))
-    .map((department) => ({ label: department, value: requests.filter((request) => request.department === department).length, color: 'blue' }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5);
   const activityTrend = makeDailySeries(activity.daily.map((item) => item.date), activity.daily);
 
   return <div className="fade-in operations-dashboard">
     <div className="page-heading">
-      <div><p className="eyebrow">Workspace overview <span className="live-dot"></span> Live data</p><h1>Operations Dashboard</h1><p className="heading-copy">{today} · Asset, procurement, and service overview.</p></div>
+      <div><p className="eyebrow">Workspace overview <span className="live-dot"></span> Live data</p><h1>Operations Dashboard</h1><p className="heading-copy">{today} · Asset and operations overview.</p></div>
       <div className="heading-actions"><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report <ArrowUpRight size={14} /></button><button className="button button-secondary" onClick={onOpenInvoices}><FileText size={16} /> Invoice register <ArrowUpRight size={14} /></button><button className="button button-primary" onClick={onOpenAssets}><Plus size={17} /> Add asset</button></div>
     </div>
 
     <div className="metric-grid dashboard-metrics">
       <MetricCard label="Total assets" value={assets.length.toLocaleString()} note="Registered in workspace" icon={Box} tone="blue" />
       <MetricCard label="Active assets" value={activeAssets.toLocaleString()} note={`${assets.length - activeAssets} retired`} icon={BriefcaseBusiness} tone="teal" />
-      <MetricCard label="Purchase orders" value={orderedRequests.toLocaleString()} note={`${requests.length} purchase requests`} icon={ClipboardList} tone="amber" />
       <MetricCard label="Invoice records" value={invoices.length.toLocaleString()} note="Tracked in invoice register" icon={FileText} tone="blue" />
     </div>
 
     <div className="dashboard-reference-grid dashboard-overview-grid">
-      <section className="panel dashboard-panel"><PanelHeader title="Purchase Requests by Status" action="View procurement" onAction={onOpenProcurement} /><DashboardBarList items={requestStatuses} emptyLabel="No purchase requests yet." /></section>
       <section className="panel dashboard-panel"><PanelHeader title="Employee Asset Requests" action="View requests" onAction={onOpenEmployeeRequests} /><DashboardStatusGrid items={employeeRequestStatuses} footer={`${employeeRequests.length} equipment request${employeeRequests.length === 1 ? '' : 's'}`} /></section>
     </div>
 
     <div className="dashboard-reference-grid dashboard-chart-grid">
       <section className="panel dashboard-panel"><PanelHeader title="Activity Trend" subtitle="Successful workspace actions over the last 30 days" /><DashboardTrend values={activityTrend} color="teal" /></section>
-    </div>
-
-    <div className="dashboard-reference-grid dashboard-breakdown-grid">
-      <section className="panel dashboard-panel"><PanelHeader title="Requests by Department" action="View procurement" onAction={onOpenProcurement} /><DashboardBarList items={departmentItems} emptyLabel="No purchase requests yet." /></section>
     </div>
 
     <div className="dashboard-reference-grid dashboard-recent-grid">
@@ -738,138 +679,14 @@ function AssetImportModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   </div>;
 }
 
-function ProcurementView({ requests, userName, department, onSaved }: { requests: PurchaseRequest[]; userName: string; department: string; onSaved: () => void }) {
-  const [requestModalOpen, setRequestModalOpen] = useState(false);
-  const monthPrefix = new Date().toISOString().slice(0, 7);
-  const approvedThisMonth = requests.filter((request) => (request.status === 'APPROVED' || request.status === 'ORDERED') && request.created_at && request.created_at.slice(0, 7) === monthPrefix).length;
-  return <div className="fade-in"><PageTitle eyebrow="Procurement / Requests" title="Purchase requests" copy="Move requests from need to approved purchase order with a clear audit trail." action="New request" icon={Plus} onAction={() => setRequestModalOpen(true)} /><div className="stat-strip"><MiniStat label="Pending approval" value={requests.filter((request) => request.status === 'PENDING_APPROVAL').length.toString()} tone="amber" /><MiniStat label="Approved this month" value={approvedThisMonth.toString()} tone="teal" /><MiniStat label="Committed spend" value={compactMoney.format(requests.reduce((sum, request) => sum + Number(request.amount), 0))} tone="blue" /></div><section className="panel table-panel full-panel"><PanelHeader title="Request pipeline" subtitle="Latest purchase requests and approvals" action="Export" /><div className="request-list">{requests.map((request) => <div className="request-row" key={request.id}><div className="request-icon"><ClipboardList size={17} /></div><div className="request-main"><strong>{request.title}</strong><span>{request.request_number} · {request.requester} · {request.department}</span></div><div className="request-amount">{money.format(request.amount)}</div><StatusBadge status={request.status} /><div className="request-date"><span>Needed by</span><strong>{formatDate(request.needed_by)}</strong></div><button className="row-more">•••</button></div>)}</div>{requests.length === 0 && <EmptyState text="No purchase requests yet. Create the first request to get started." />}</section>{requestModalOpen && <PurchaseRequestModal userName={userName} department={department} onClose={() => setRequestModalOpen(false)} onSaved={() => { setRequestModalOpen(false); onSaved(); }} />}</div>;
-}
-
-function VendorsView({ vendors, invoices, user, onSaved, onOpenProcurement, onOpenInvoices }: {
-  vendors: Vendor[];
-  invoices: Invoice[];
-  user: AppUser;
-  onSaved: () => void;
-  onOpenProcurement: () => void;
-  onOpenInvoices: () => void;
-}) {
-  const [createOpen, setCreateOpen] = useState(false);
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [filter, setFilter] = useState<'ALL' | Vendor['status']>('ALL');
-  const [error, setError] = useState<string | null>(null);
-  const canManage = user.role === 'admin' || user.role === 'procurement_officer';
-  const canReview = user.role === 'admin' || user.role === 'approver';
-  const visibleVendors = vendors.filter((vendor) => filter === 'ALL' || vendor.status === filter);
-
-  const updateStatus = async (vendor: Vendor, status: 'APPROVED' | 'REJECTED') => {
-    setError(null);
-    try {
-      await api.put(`/api/vendors/${encodeURIComponent(vendor.id)}`, { status });
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not review this vendor.');
-    }
-  };
-
-  const suspendVendor = async (vendor: Vendor) => {
-    if (!window.confirm(`Suspend ${vendor.legal_name}?`)) return;
-    setError(null);
-    try {
-      await api.del(`/api/vendors/${encodeURIComponent(vendor.id)}`);
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not suspend this vendor.');
-    }
-  };
-
-  return <div className="fade-in">
-    <PageTitle eyebrow="Procurement / Supplier directory" title="Vendor onboarding" copy="Register suppliers, review onboarding submissions, and keep procurement and invoice records connected." action={canManage ? 'Add vendor' : undefined} icon={Plus} onAction={canManage ? () => setCreateOpen(true) : undefined} />
-    <div className="stat-strip">
-      <MiniStat label="Total vendors" value={vendors.length.toString()} tone="blue" />
-      <MiniStat label="Pending review" value={vendors.filter((vendor) => vendor.status === 'PENDING_REVIEW').length.toString()} tone="amber" />
-      <MiniStat label="Approved" value={vendors.filter((vendor) => vendor.status === 'APPROVED').length.toString()} tone="teal" />
-    </div>
-    <section className="panel table-panel full-panel">
-      <PanelHeader title="Supplier directory" subtitle="Vendor onboarding and status" />
-      {error && <div className="auth-message import-error" role="alert">{error}</div>}
-      <div className="vendor-toolbar">
-        <label className="invoice-filter-label">Status
-          <select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}>
-            <option value="ALL">All vendors</option><option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="SUSPENDED">Suspended</option>
-          </select>
-        </label>
-        <div className="vendor-links"><button className="button button-secondary" onClick={onOpenProcurement}>Purchase requests</button><button className="button button-secondary" onClick={onOpenInvoices}>Invoices</button></div>
-      </div>
-      <div className="vendor-table-wrap"><table className="data-table vendor-table">
-        <thead><tr><th>Vendor</th><th>Contact</th><th>Categories</th><th>Tax ID</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
-        <tbody>{visibleVendors.map((vendor) => <tr key={vendor.id}>
-          <td><button type="button" className="record-link vendor-name-link" onClick={() => setSelectedVendor(vendor)}>{vendor.legal_name}</button><small>{vendor.email || vendor.phone || 'No contact details'}</small></td>
-          <td>{vendor.contact_name || '—'}<small>{vendor.phone || '—'}</small></td>
-          <td>{vendor.categories || '—'}</td><td>{vendor.tax_id || '—'}</td><td>{formatDate(vendor.created_at)}</td>
-          <td><StatusBadge status={vendor.status} /></td>
-          <td><div className="table-actions">
-            {vendor.status === 'PENDING_REVIEW' && canReview && <><button className="button button-secondary" onClick={() => void updateStatus(vendor, 'APPROVED')}>Approve</button><button className="button button-secondary" onClick={() => void updateStatus(vendor, 'REJECTED')}>Reject</button></>}
-            {vendor.status === 'APPROVED' && user.role === 'admin' && <button className="button button-secondary" onClick={() => void suspendVendor(vendor)}>Suspend</button>}
-          </div></td>
-        </tr>)}</tbody>
-      </table></div>
-      {visibleVendors.length === 0 && <EmptyState text="No vendors match this status. Add a vendor or choose another filter." />}
-    </section>
-    {createOpen && <VendorModal onClose={() => setCreateOpen(false)} onSaved={() => { setCreateOpen(false); onSaved(); }} />}
-    {selectedVendor && <VendorDetailsDialog vendor={selectedVendor} invoices={invoices} onClose={() => setSelectedVendor(null)} onOpenInvoice={(invoice) => { setSelectedVendor(null); setSelectedInvoice(invoice); }} />}
-    {selectedInvoice && <InvoiceDetailsDialog invoice={selectedInvoice} vendor={findVendor(vendors, selectedInvoice.vendor)} onClose={() => setSelectedInvoice(null)} onOpenVendor={(vendor) => { setSelectedInvoice(null); if (vendor) setSelectedVendor(vendor); }} />}
-  </div>;
-}
-
-function VendorModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ legal_name: '', contact_name: '', email: '', phone: '', tax_id: '', address: '', categories: '', notes: '' });
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      await api.post('/api/vendors', form);
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not submit vendor onboarding.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <form className="modal-card" onSubmit={(event) => void submit(event)}>
-      <div className="modal-header"><div><p className="eyebrow">Procurement</p><h2>Onboard a vendor</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div>
-      <div className="form-grid">
-        <label>Legal name<input required maxLength={200} value={form.legal_name} onChange={(event) => setForm({ ...form, legal_name: event.target.value })} /></label>
-        <label>Contact name<input maxLength={200} value={form.contact_name} onChange={(event) => setForm({ ...form, contact_name: event.target.value })} /></label>
-        <label>Email<input type="email" maxLength={200} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-        <label>Phone<input maxLength={200} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
-        <label>Tax ID<input maxLength={200} value={form.tax_id} onChange={(event) => setForm({ ...form, tax_id: event.target.value })} /></label>
-        <label>Categories<input maxLength={200} placeholder="Hardware, software, services" value={form.categories} onChange={(event) => setForm({ ...form, categories: event.target.value })} /></label>
-        <label className="form-full">Address<textarea maxLength={1000} rows={2} value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></label>
-        <label className="form-full">Notes<textarea maxLength={1000} rows={2} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-      </div>
-      {error && <div className="auth-message import-error" role="alert">{error}</div>}
-      <div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}{busy ? 'Submitting...' : 'Submit for review'}</button></div>
-    </form>
-  </div>;
-}
-
-function InvoicesView({ invoices, vendors, user, query, onSaved }: { invoices: Invoice[]; vendors: Vendor[]; user: AppUser; query: string; onSaved: () => void }) {
+function InvoicesView({ invoices, user, query, onSaved }: { invoices: Invoice[]; user: AppUser; query: string; onSaved: () => void }) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [filter, setFilter] = useState<'ALL' | Invoice['status']>('ALL');
   const [search, setSearch] = useState(query);
   const [tableError, setTableError] = useState<string | null>(null);
   const canManage = user.role === 'admin' || user.role === 'finance_officer';
-  useEffect(() => {
-    setSearch(query);
-  }, [query]);
+  useEffect(() => setSearch(query), [query]);
   const visibleInvoices = invoices.filter((invoice) => {
     const matchesStatus = filter === 'ALL' || invoice.status === filter;
     const term = search.trim().toLowerCase();
@@ -878,22 +695,14 @@ function InvoicesView({ invoices, vendors, user, query, onSaved }: { invoices: I
   });
   const updateStatus = async (invoice: Invoice, status: Invoice['status']) => {
     setTableError(null);
-    try {
-      await api.put(`/api/invoices/${encodeURIComponent(invoice.id)}`, { status });
-      onSaved();
-    } catch (err) {
-      setTableError(err instanceof ApiError ? err.message : 'Could not update invoice status.');
-    }
+    try { await api.put(`/api/invoices/${encodeURIComponent(invoice.id)}`, { status }); onSaved(); }
+    catch (err) { setTableError(err instanceof ApiError ? err.message : 'Could not update invoice status.'); }
   };
   const deleteInvoice = async (invoice: Invoice) => {
     if (!window.confirm(`Delete invoice ${invoice.invoice_number}? This does not delete its uploaded document.`)) return;
     setTableError(null);
-    try {
-      await api.del(`/api/invoices/${encodeURIComponent(invoice.id)}`);
-      onSaved();
-    } catch (err) {
-      setTableError(err instanceof ApiError ? err.message : 'Could not delete this invoice.');
-    }
+    try { await api.del(`/api/invoices/${encodeURIComponent(invoice.id)}`); onSaved(); }
+    catch (err) { setTableError(err instanceof ApiError ? err.message : 'Could not delete this invoice.'); }
   };
   const downloadInvoice = async (invoice: Invoice) => {
     if (!invoice.document_id || !invoice.file_visible) return;
@@ -906,20 +715,14 @@ function InvoicesView({ invoices, vendors, user, query, onSaved }: { invoices: I
       anchor.download = invoice.file_name || 'invoice';
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err) {
-      setTableError(err instanceof ApiError ? err.message : 'Could not download the invoice file.');
-    }
+    } catch (err) { setTableError(err instanceof ApiError ? err.message : 'Could not download the invoice file.'); }
   };
   return <div className="fade-in">
     <PageTitle eyebrow="Finance / Payables" title="Invoices" copy="Review invoice details, supporting files, and processing status." />
-    <div className="invoice-toolbar">
-      <div className="invoice-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search invoice, PO, or vendor" aria-label="Search invoices" /></div>
-      <label className="invoice-filter-label">Status<select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} aria-label="Filter invoices by status"><option value="ALL">All statuses</option>{invoiceStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>
-      {canManage && <div className="invoice-toolbar-actions"><button className="button button-secondary" onClick={() => setManualOpen(true)}><Plus size={16} /> Manual Entry</button><button className="button button-primary" onClick={() => setUploadOpen(true)}><FileText size={16} /> Upload Invoice</button></div>}
-    </div>
+    <div className="invoice-toolbar"><div className="invoice-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search invoice, PO, or supplier" aria-label="Search invoices" /></div><label className="invoice-filter-label">Status<select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} aria-label="Filter invoices by status"><option value="ALL">All statuses</option>{invoiceStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>{canManage && <div className="invoice-toolbar-actions"><button className="button button-secondary" onClick={() => setManualOpen(true)}><Plus size={16} /> Manual Entry</button><button className="button button-primary" onClick={() => setUploadOpen(true)}><FileText size={16} /> Upload Invoice</button></div>}</div>
     <div className="stat-strip"><MiniStat label="In queue" value={invoices.filter((invoice) => invoice.status !== 'PROCESSED').length.toString()} tone="amber" /><MiniStat label="Needs review" value={invoices.filter((invoice) => invoice.status === 'UNDER_REVIEW' || invoice.status === 'ON_HOLD').length.toString()} tone="red" /><MiniStat label="Processed spend" value={compactMoney.format(invoices.filter((invoice) => invoice.status === 'PROCESSED').reduce((sum, invoice) => sum + Number(invoice.total), 0))} tone="teal" /></div>
     {tableError && <div className="auth-message module-error invoice-table-error">{tableError}</div>}
-    <section className="panel table-panel full-panel"><InvoiceTable invoices={visibleInvoices} vendors={vendors} canManage={canManage} canDelete={user.role === 'admin'} onStatusChange={(invoice, status) => void updateStatus(invoice, status)} onDelete={(invoice) => void deleteInvoice(invoice)} onDownload={(invoice) => void downloadInvoice(invoice)} /></section>
+    <section className="panel table-panel full-panel"><InvoiceTable invoices={visibleInvoices} canManage={canManage} canDelete={user.role === 'admin'} onStatusChange={(invoice, status) => void updateStatus(invoice, status)} onDelete={(invoice) => void deleteInvoice(invoice)} onDownload={(invoice) => void downloadInvoice(invoice)} /></section>
     {uploadOpen && <InvoiceUploadModal onClose={() => setUploadOpen(false)} onSaved={() => { setUploadOpen(false); onSaved(); }} />}
     {manualOpen && <ManualInvoiceModal onClose={() => setManualOpen(false)} onSaved={() => { setManualOpen(false); onSaved(); }} />}
   </div>;
@@ -1139,27 +942,20 @@ function GoodsReceiptModal({ onClose, onSaved }: { onClose: () => void; onSaved:
       setBusy(false);
     }
   };
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Inventory / Receiving</p><h2>Record goods receipt</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label>Purchase order<input required value={form.purchase_order} onChange={(event) => update('purchase_order', event.target.value)} /></label><label>Vendor<input required value={form.vendor} onChange={(event) => update('vendor', event.target.value)} /></label><label>Received date<input required type="date" value={form.received_date} onChange={(event) => update('received_date', event.target.value)} /></label><label>Ordered quantity<input required min="0" type="number" value={form.ordered_quantity} onChange={(event) => update('ordered_quantity', event.target.value)} /></label><label>Accepted quantity<input required min="0" type="number" value={form.accepted_quantity} onChange={(event) => update('accepted_quantity', event.target.value)} /></label><label>Rejected quantity<input required min="0" type="number" value={form.rejected_quantity} onChange={(event) => update('rejected_quantity', event.target.value)} /></label><label className="span-2">Discrepancy note<textarea value={form.discrepancy_note} onChange={(event) => update('discrepancy_note', event.target.value)} placeholder="Optional notes about rejected or missing items" /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? 'Saving...' : 'Save receipt'}</button></div></form></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Inventory / Receiving</p><h2>Record goods receipt</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label>Purchase order<input required value={form.purchase_order} onChange={(event) => update('purchase_order', event.target.value)} /></label><label>Supplier<input required value={form.vendor} onChange={(event) => update('vendor', event.target.value)} /></label><label>Received date<input required type="date" value={form.received_date} onChange={(event) => update('received_date', event.target.value)} /></label><label>Ordered quantity<input required min="0" type="number" value={form.ordered_quantity} onChange={(event) => update('ordered_quantity', event.target.value)} /></label><label>Accepted quantity<input required min="0" type="number" value={form.accepted_quantity} onChange={(event) => update('accepted_quantity', event.target.value)} /></label><label>Rejected quantity<input required min="0" type="number" value={form.rejected_quantity} onChange={(event) => update('rejected_quantity', event.target.value)} /></label><label className="span-2">Discrepancy note<textarea value={form.discrepancy_note} onChange={(event) => update('discrepancy_note', event.target.value)} placeholder="Optional notes about rejected or missing items" /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? 'Saving...' : 'Save receipt'}</button></div></form></div>;
 }
 
-function InventoryView({ assets, receipts, vendors, invoices, user, onSaved }: { assets: Asset[]; receipts: InventoryReceipt[]; vendors: Vendor[]; invoices: Invoice[]; user: AppUser; onSaved: () => void }) {
+function InventoryView({ assets, receipts, user, onSaved }: { assets: Asset[]; receipts: InventoryReceipt[]; user: AppUser; onSaved: () => void }) {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const stock = assets.filter((asset) => asset.status === 'AVAILABLE');
   const categories = [...new Set(stock.map((asset) => asset.category))];
-  const canReceive = ['admin', 'it_asset_manager', 'procurement_officer'].includes(user.role);
+  const canReceive = ['admin', 'it_asset_manager'].includes(user.role);
   return <div className="fade-in">
     <PageTitle eyebrow="Inventory / Stock operations" title="Inventory" copy="Available assets and goods receipt activity from your operational register." action={canReceive ? 'Record goods receipt' : undefined} icon={Plus} onAction={canReceive ? () => setReceiptModalOpen(true) : undefined} />
     <div className="stat-strip"><MiniStat label="Available assets" value={stock.length.toString()} tone="teal" /><MiniStat label="Categories in stock" value={categories.length.toString()} tone="blue" /><MiniStat label="Goods receipts" value={receipts.length.toString()} tone="amber" /></div>
     <section className="panel table-panel full-panel"><PanelHeader title="Available stock" subtitle="Registered assets ready to assign" /><AssetTable assets={stock} /></section>
-    <section className="panel table-panel full-panel module-panel-gap"><PanelHeader title="Recent goods receipts" subtitle="Received and accepted quantities recorded against purchase orders" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Receipt</th><th>Purchase order</th><th>Vendor</th><th>Received</th><th>Accepted / ordered</th><th>Status</th></tr></thead><tbody>{receipts.map((receipt) => {
-      const vendor = findVendor(vendors, receipt.vendor);
-      return <tr key={receipt.id}><td><strong>{receipt.receipt_number}</strong></td><td>{receipt.purchase_order}</td><td>{vendor ? <button type="button" className="record-link" onClick={() => setSelectedVendor(vendor)}>{receipt.vendor}</button> : receipt.vendor}</td><td>{formatDate(receipt.received_date)}</td><td>{receipt.accepted_quantity} / {receipt.ordered_quantity}</td><td><StatusBadge status={receipt.status} /></td></tr>;
-    })}</tbody></table>{receipts.length === 0 && <EmptyState text="No goods receipts recorded yet." />}</div></section>
+    <section className="panel table-panel full-panel module-panel-gap"><PanelHeader title="Recent goods receipts" subtitle="Received and accepted quantities recorded against purchase orders" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Receipt</th><th>Purchase order</th><th>Supplier</th><th>Received</th><th>Accepted / ordered</th><th>Status</th></tr></thead><tbody>{receipts.map((receipt) => <tr key={receipt.id}><td><strong>{receipt.receipt_number}</strong></td><td>{receipt.purchase_order}</td><td>{receipt.vendor}</td><td>{formatDate(receipt.received_date)}</td><td>{receipt.accepted_quantity} / {receipt.ordered_quantity}</td><td><StatusBadge status={receipt.status} /></td></tr>)}</tbody></table>{receipts.length === 0 && <EmptyState text="No goods receipts recorded yet." />}</div></section>
     {receiptModalOpen && <GoodsReceiptModal onClose={() => setReceiptModalOpen(false)} onSaved={() => { setReceiptModalOpen(false); onSaved(); }} />}
-    {selectedVendor && <VendorDetailsDialog vendor={selectedVendor} invoices={invoices} onClose={() => setSelectedVendor(null)} onOpenInvoice={(invoice) => { setSelectedVendor(null); setSelectedInvoice(invoice); }} />}
-    {selectedInvoice && <InvoiceDetailsDialog invoice={selectedInvoice} vendor={findVendor(vendors, selectedInvoice.vendor)} onClose={() => setSelectedInvoice(null)} onOpenVendor={(vendor) => { setSelectedInvoice(null); if (vendor) setSelectedVendor(vendor); }} />}
   </div>;
 }
 
@@ -1346,7 +1142,7 @@ function NotificationsView({ notifications, onRead }: { notifications: Workspace
   return <div className="fade-in"><PageTitle eyebrow="Workspace / Activity" title="Notifications" copy="Requests and workflow updates relevant to your account." />{error && <div className="auth-message module-error">{error}</div>}<section className="panel table-panel full-panel"><PanelHeader title="Recent notifications" subtitle={`${notifications.filter((notification) => !notification.read_at).length} unread`} /><div className="notification-list">{notifications.map((notification) => <article className={`notification-row ${notification.read_at ? '' : 'unread'}`} key={notification.id}><div className="notification-icon"><Bell size={16} /></div><div className="notification-copy"><strong>{notification.title}</strong><span>{notification.body}</span><small>{formatDateTime(notification.created_at)}</small></div>{!notification.read_at && <button className="button button-secondary mark-read-button" onClick={() => void markRead(notification.id)}>Mark read</button>}</article>)}</div>{notifications.length === 0 && <EmptyState text="You have no notifications yet." />}</section></div>;
 }
 
-type SettingsSection = 'Company' | 'Branding' | 'Procurement' | 'Approvals' | 'Notifications' | 'AP Escalation' | 'SLA' | 'ManageEngine';
+type SettingsSection = 'Company' | 'Branding' | 'Approvals' | 'Notifications' | 'AP Escalation' | 'SLA' | 'Email Settings' | 'ManageEngine';
 type StringSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends string ? K : never }[keyof WorkspaceSettings];
 type NumberSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends number ? K : never }[keyof WorkspaceSettings];
 type BooleanSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends boolean ? K : never }[keyof WorkspaceSettings];
@@ -1354,11 +1150,11 @@ type BooleanSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] ext
 const settingsSections: { label: SettingsSection; icon: typeof LayoutDashboard }[] = [
   { label: 'Company', icon: Building2 },
   { label: 'Branding', icon: Palette },
-  { label: 'Procurement', icon: ClipboardList },
   { label: 'Approvals', icon: ClipboardCheck },
   { label: 'Notifications', icon: Bell },
   { label: 'AP Escalation', icon: CircleAlert },
   { label: 'SLA', icon: ShieldCheck },
+  { label: 'Email Settings', icon: Mail },
   { label: 'ManageEngine', icon: RefreshCw },
 ];
 
@@ -1368,6 +1164,13 @@ type ManageEngineStatus = {
   oauthUrl: string;
   requiredScopes: string[];
   assetWarrantyWriteBackAvailable: boolean;
+};
+
+type GmailStatus = {
+  configured: boolean;
+  senderEmail: string;
+  missing: string[];
+  requiredScopes: string[];
 };
 
 function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUser) => void }) {
@@ -1386,6 +1189,10 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
   const [manageEngineTesting, setManageEngineTesting] = useState(false);
   const [manageEngineMessage, setManageEngineMessage] = useState<string | null>(null);
   const [manageEngineError, setManageEngineError] = useState<string | null>(null);
+  const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+  const [gmailTesting, setGmailTesting] = useState(false);
+  const [gmailMessage, setGmailMessage] = useState<string | null>(null);
+  const [gmailError, setGmailError] = useState<string | null>(null);
   const isAdmin = user.role === 'admin';
 
   const loadSettings = useCallback(async () => {
@@ -1412,6 +1219,14 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
       .catch((err: unknown) => setManageEngineError(err instanceof ApiError ? err.message : 'Could not load ManageEngine integration status.'));
   }, [section]);
 
+  useEffect(() => {
+    if (section !== 'Email Settings') return;
+    setGmailError(null);
+    api.get<GmailStatus>('/api/integrations/gmail')
+      .then(setGmailStatus)
+      .catch((err: unknown) => setGmailError(err instanceof ApiError ? err.message : 'Could not load Gmail integration status.'));
+  }, [section]);
+
   const testManageEngineConnection = async () => {
     setManageEngineTesting(true);
     setManageEngineError(null);
@@ -1423,6 +1238,20 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
       setManageEngineError(err instanceof ApiError ? err.message : 'Could not connect to ManageEngine.');
     } finally {
       setManageEngineTesting(false);
+    }
+  };
+
+  const testGmailConnection = async () => {
+    setGmailTesting(true);
+    setGmailError(null);
+    setGmailMessage(null);
+    try {
+      const result = await api.post<{ sent: boolean; recipient: string }>('/api/integrations/gmail/test', {});
+      setGmailMessage(`Test email sent to ${result.recipient}.`);
+    } catch (err) {
+      setGmailError(err instanceof ApiError ? err.message : 'Could not send a Gmail test email.');
+    } finally {
+      setGmailTesting(false);
     }
   };
 
@@ -1489,14 +1318,11 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
     case 'Branding':
       sectionContent = <><div className="settings-fields">{textInput('Logo URL', 'logoUrl', 'url')}{colorInput('Primary color', 'primaryColor')}{colorInput('Accent color', 'accentColor')}</div><p className="settings-help">Use a publicly accessible image URL for your company logo. Colors are saved for workspace branding.</p>{settings.logoUrl && <div className="settings-brand-preview"><img src={settings.logoUrl} alt="Company logo preview" /><span>Logo preview</span></div>}</>;
       break;
-    case 'Procurement':
-      sectionContent = <div className="settings-fields">{textInput('Purchase order prefix', 'purchaseOrderPrefix', 'text', true)}{numberInput('Default payment terms (days)', 'paymentTermsDays', 0, 365)}{numberInput('Approval required above', 'approvalThreshold')}{checkbox('Require a purchase order for invoices', 'requirePurchaseOrder', 'Invoices without a linked purchase order can be held for review.')}</div>;
-      break;
     case 'Approvals':
-      sectionContent = <div className="settings-fields">{numberInput('Approval levels', 'approvalLevels', 1, 5)}<label>Default approver role<select disabled={!isAdmin} value={settings.defaultApproverRole} onChange={(event) => updateSetting('defaultApproverRole', event.target.value)}><option value="approver">Approver</option><option value="admin">Administrator</option><option value="finance_officer">Finance officer</option><option value="procurement_officer">Procurement officer</option></select></label>{numberInput('Auto-approve requests up to', 'autoApproveLimit')}<p className="settings-help">Set the approval chain depth and default workspace role used for routed requests.</p></div>;
+      sectionContent = <div className="settings-fields">{numberInput('Approval levels', 'approvalLevels', 1, 5)}<label>Default approver role<select disabled={!isAdmin} value={settings.defaultApproverRole} onChange={(event) => updateSetting('defaultApproverRole', event.target.value)}><option value="approver">Approver</option><option value="admin">Administrator</option><option value="finance_officer">Finance officer</option></select></label>{numberInput('Auto-approve requests up to', 'autoApproveLimit')}<p className="settings-help">Set the approval chain depth and default workspace role used for routed requests.</p></div>;
       break;
     case 'Notifications':
-      sectionContent = <div className="settings-option-list">{checkbox('Email notifications', 'notificationsEmail', 'Email delivery requires an email service to be configured.')}{checkbox('In-app notifications', 'notificationsInApp', 'Show notification updates in the workspace.')}{checkbox('Purchase request updates', 'notifyPurchaseRequests')}{checkbox('Invoice updates', 'notifyInvoices')}{checkbox('Approval activity', 'notifyApprovals')}{checkbox('SLA breach alerts', 'notifySlaBreaches')}</div>;
+      sectionContent = <div className="settings-option-list">{checkbox('Email notifications', 'notificationsEmail', 'Send supported workflow updates through the Gmail integration in Email Settings.')}{checkbox('In-app notifications', 'notificationsInApp', 'Show notification updates in the workspace.')}{checkbox('Invoice updates', 'notifyInvoices')}{checkbox('Approval activity', 'notifyApprovals')}{checkbox('SLA breach alerts', 'notifySlaBreaches')}</div>;
       break;
     case 'AP Escalation':
       sectionContent = <div className="settings-fields">{checkbox('Enable AP escalation', 'apEscalationEnabled', 'Escalate invoices that remain pending review.')}{numberInput('Escalate after (hours)', 'apEscalationAfterHours', 1)}{numberInput('Repeat escalation every (hours)', 'apEscalationRepeatHours', 1)}{textInput('Escalation contact email', 'apEscalationEmail', 'email')}</div>;
@@ -1505,6 +1331,21 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
       sectionContent = <div className="settings-sla-table"><div className="settings-sla-heading"><span>Priority</span><span>Response target (hours)</span><span>Resolution target (hours)</span></div>{(['Low', 'Medium', 'High', 'Urgent'] as const).map((priority) => {
         return <div className="settings-sla-row" key={priority}><strong>{priority}</strong>{numberInput(`${priority} response target`, `sla${priority}ResponseHours` as NumberSetting, 1)}{numberInput(`${priority} resolution target`, `sla${priority}ResolutionHours` as NumberSetting, 1)}</div>;
       })}</div>;
+      break;
+    case 'Email Settings':
+      sectionContent = <div className="settings-integration">
+        <div className="settings-integration-heading"><div><h3>Google Account sign-in</h3><p>Allow users to sign in to this workspace with their Google Account.</p></div><span className={`integration-status ${settings.googleClientId ? 'connected' : 'pending'}`}>{settings.googleClientId ? 'Configured' : 'Not configured'}</span></div>
+        <div className="settings-fields">{textInput('Google OAuth Web Client ID', 'googleClientId')}</div>
+        <p className="settings-help">Create a Web application OAuth client in Google Cloud Console, add this app's origin to its authorized JavaScript origins, then paste the client ID here and save. The client ID is public; account verification remains on the API server. Users can then choose Login with Google on the sign-in page.</p>
+        <div className="settings-integration-heading"><div><h3>Gmail integration</h3><p>Send workspace notification emails through the configured Gmail account.</p></div><span className={`integration-status ${gmailStatus?.configured ? 'connected' : 'pending'}`}>{gmailStatus?.configured ? 'Credentials configured' : 'Not configured'}</span></div>
+        <div className="settings-fields"><label>Gmail sender account<input value={gmailStatus?.senderEmail || (gmailStatus ? 'Not configured' : 'Loading...')} readOnly /></label></div>
+        <div className="integration-scopes"><strong>Required Google OAuth scope</strong><ul>{(gmailStatus?.requiredScopes ?? ['https://www.googleapis.com/auth/gmail.send']).map((scope) => <li key={scope}><code>{scope}</code></li>)}</ul></div>
+        <p className="settings-help">Set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, and GMAIL_SENDER_EMAIL in the API server's .env file, then restart the server. Grant the Gmail send scope when creating the refresh token. Credentials stay on the server. Enable Email notifications under Notifications to send workflow updates to the user's registered work email.</p>
+        {gmailStatus && !gmailStatus.configured && <p className="settings-help">Missing configuration: {gmailStatus.missing.join(', ')}</p>}
+        {gmailError && <div className="auth-message" role="alert">{gmailError}</div>}
+        {gmailMessage && <div className="settings-success" role="status">{gmailMessage}</div>}
+        <div className="settings-integration-actions"><button type="button" className="button button-secondary" onClick={() => void testGmailConnection()} disabled={!isAdmin || !gmailStatus?.configured || gmailTesting}>{gmailTesting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}{gmailTesting ? 'Sending test email...' : 'Send test email'}</button><a className="text-button" href="https://developers.google.com/workspace/gmail/api/auth/scopes" target="_blank" rel="noreferrer">Gmail API scope documentation <ArrowUpRight size={14} /></a></div>
+      </div>;
       break;
     case 'ManageEngine':
       sectionContent = <div className="settings-integration">
@@ -1522,8 +1363,8 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
       break;
   }
 
-  return <div className="fade-in"><PageTitle eyebrow="Workspace / Preferences" title="Settings" copy="Company, procurement, notifications, and SLA" />
-    <div className="settings-tabs" role="tablist" aria-label="Workspace setting categories">{settingsSections.filter(({ label }) => label !== 'ManageEngine' || isAdmin).map(({ label, icon: Icon }) => <button type="button" role="tab" aria-selected={section === label} className={`settings-tab ${section === label ? 'active' : ''}`} key={label} onClick={() => { setSection(label); setMessage(null); setError(null); }}><Icon size={16} />{label}</button>)}</div>
+  return <div className="fade-in"><PageTitle eyebrow="Workspace / Preferences" title="Settings" copy="Company, notifications, and SLA" />
+    <div className="settings-tabs" role="tablist" aria-label="Workspace setting categories">{settingsSections.filter(({ label }) => !['ManageEngine', 'Email Settings'].includes(label) || isAdmin).map(({ label, icon: Icon }) => <button type="button" role="tab" aria-selected={section === label} className={`settings-tab ${section === label ? 'active' : ''}`} key={label} onClick={() => { setSection(label); setMessage(null); setError(null); }}><Icon size={16} />{label}</button>)}</div>
     <form className="panel settings-workspace-form" onSubmit={submitSettings}><section role="tabpanel" aria-label={`${section} settings`} className="settings-section">{sectionContent}</section>
       {!isAdmin && <p className="settings-help">Only a workspace administrator can change company settings.</p>}
       {error && <div className="auth-message">{error}</div>}{message && <div className="settings-success" role="status">{message}</div>}
@@ -1641,10 +1482,9 @@ function UserManagementView({ currentUser }: { currentUser: AppUser }) {
     <section className="panel user-permissions-panel"><PanelHeader title="Role permissions" subtitle="Access is enforced by the server for every request." /><div className="user-permissions-grid">
       <p><strong>Admin</strong><span>Full workspace access, including user management and account roles.</span></p>
       <p><strong>IT asset manager</strong><span>Manage assets and lifecycle, employee requests, write-offs, and receipts.</span></p>
-      <p><strong>Procurement officer</strong><span>Manage procurement requests and inventory receipts.</span></p>
       <p><strong>Finance officer</strong><span>Manage invoices and view finance-approved documents.</span></p>
-      <p><strong>Approver</strong><span>Review and update purchase request approvals.</span></p>
-      <p><strong>Employee</strong><span>Submit purchase and equipment requests.</span></p>
+      <p><strong>Approver</strong><span>Review routed workflow approvals.</span></p>
+      <p><strong>Employee</strong><span>Submit equipment requests.</span></p>
       <p><strong>Auditor</strong><span>Read-only access to the audit log and permitted documents.</span></p>
     </div></section>
     {modalOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}><form className="modal-card user-create-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Workspace access</p><h2>Add new user</h2></div><button type="button" className="icon-button" onClick={closeModal} aria-label="Close" disabled={saving}><X size={18} /></button></div><div className="form-grid"><label>Full name<input required autoComplete="name" value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} /></label><label>Email<input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Temporary password<input required type="password" minLength={6} autoComplete="new-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><small>At least 6 characters. Share it with the user securely.</small></label><label>Department<input required value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })} /></label><label>Role<select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>{workspaceRoles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label></div>{formError && <div className="auth-message">{formError}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" disabled={saving} onClick={closeModal}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <UserPlus size={16} />}{saving ? 'Creating...' : 'Create user'}</button></div></form></div>}
@@ -1692,7 +1532,6 @@ function AssistantView({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
     { label: 'Assets', tab: 'Assets', icon: Box },
     { label: 'Invoices', tab: 'Invoices', icon: FileText },
     { label: 'Warranties', tab: 'Warranties', icon: BadgeCheck },
-    { label: 'Procurement', tab: 'Procurement', icon: ClipboardList },
   ];
   return <div className="fade-in">
     <PageTitle eyebrow="Workspace / AI" title="AI Assistant" copy="Ask a workspace question or jump directly to a module." />
@@ -1833,66 +1672,34 @@ function formatDateTime(value: string) {
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
 }
 
-function InvoiceTable({ invoices, vendors = [], compact = false, canManage = false, canDelete = false, onStatusChange, onDelete, onDownload }: { invoices: Invoice[]; vendors?: Vendor[]; compact?: boolean; canManage?: boolean; canDelete?: boolean; onStatusChange?: (invoice: Invoice, status: Invoice['status']) => void; onDelete?: (invoice: Invoice) => void; onDownload?: (invoice: Invoice) => void }) {
+function InvoiceTable({ invoices, compact = false, canManage = false, canDelete = false, onStatusChange, onDelete, onDownload }: { invoices: Invoice[]; compact?: boolean; canManage?: boolean; canDelete?: boolean; onStatusChange?: (invoice: Invoice, status: Invoice['status']) => void; onDelete?: (invoice: Invoice) => void; onDownload?: (invoice: Invoice) => void }) {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const noItems = invoices.length === 0;
-  if (compact) return <>
-    <div className="data-table-wrap"><table className="data-table invoice-table"><thead><tr><th>Invoice</th><th>Vendor</th><th>PO reference</th><th>Total</th><th>AI confidence</th><th>Status</th></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id}><td><div className="invoice-cell"><div className="document-icon"><FileText size={16} /></div><div><button type="button" className="record-link" onClick={() => setSelectedInvoice(invoice)}>{invoice.invoice_number}</button><span>{formatDate(invoice.invoice_date)}</span></div></div></td><td>{findVendor(vendors, invoice.vendor) ? <button type="button" className="record-link" onClick={() => setSelectedVendor(findVendor(vendors, invoice.vendor) ?? null)}>{invoice.vendor}</button> : invoice.vendor}</td><td className="muted-cell">{invoice.purchase_order}</td><td><strong>{money.format(invoice.total)}</strong></td><td><div className="confidence"><div className="confidence-track"><span style={{ width: `${invoice.confidence}%` }}></span></div><span>{invoice.confidence}%</span></div></td><td><StatusBadge status={invoice.status} /></td></tr>)}</tbody></table>{noItems && <EmptyState text="No invoices in the queue." />}</div>
-    {selectedInvoice && <InvoiceDetailsDialog invoice={selectedInvoice} vendor={findVendor(vendors, selectedInvoice.vendor)} onClose={() => setSelectedInvoice(null)} onOpenVendor={(vendor) => { setSelectedInvoice(null); if (vendor) setSelectedVendor(vendor); }} />}
-    {selectedVendor && <VendorDetailsDialog vendor={selectedVendor} invoices={invoices} onClose={() => setSelectedVendor(null)} onOpenInvoice={(invoice) => { setSelectedVendor(null); setSelectedInvoice(invoice); }} />}
-  </>;
-  return <><div className="data-table-wrap invoice-table-wrap"><table className="data-table invoice-table"><thead><tr><th>Invoice Number</th><th>PO Number</th><th>Vendor Name</th><th>Invoice Date</th><th>Description</th><th>HSN</th><th>QTY</th><th>Unit Price</th><th>Total Amount</th><th>Bank Details</th><th>File</th><th>Status</th><th>Actions</th></tr></thead>
-    <tbody>{invoices.map((invoice) => {
-      const items = Array.isArray(invoice.extracted_fields?.line_items) ? invoice.extracted_fields.line_items : [];
-      const details = invoice.extracted_fields?.bank_details;
-      const description = items.map((item) => item.description).filter(Boolean).join(', ');
-      const hsn = [...new Set(items.map((item) => item.hsn).filter(Boolean))].join(', ');
-      const quantity = items.reduce((sum, item) => sum + (typeof item.quantity === 'number' ? item.quantity : 0), 0);
-      const unitPrices = [...new Set(items.map((item) => item.unit_price).filter((price): price is number => typeof price === 'number'))];
-      const bankSummary = details ? [details.name, details.account ? `••••${details.account.slice(-4)}` : null, details.ifsc].filter(Boolean).join(' · ') : '';
-      return <tr key={invoice.id}>
-        <td><div className="invoice-cell"><div className="document-icon"><FileText size={16} /></div><div><button type="button" className="record-link" onClick={() => setSelectedInvoice(invoice)}>{invoice.invoice_number}</button>{invoice.issue && <span className="invoice-issue">{invoice.issue}</span>}</div></div></td>
-        <td className="muted-cell">{invoice.purchase_order || '—'}</td><td>{findVendor(vendors, invoice.vendor) ? <button type="button" className="record-link" onClick={() => setSelectedVendor(findVendor(vendors, invoice.vendor) ?? null)}>{invoice.vendor}</button> : invoice.vendor}</td><td>{formatDate(invoice.invoice_date)}</td>
-        <td className="invoice-truncate" title={description}>{description || '—'}</td><td>{hsn || '—'}</td><td>{items.length ? (quantity || items.length) : '—'}</td>
-        <td>{unitPrices.length ? unitPrices.map((price) => formatInvoiceAmount(price, invoice.currency_code)).join(', ') : '—'}</td><td><strong>{formatInvoiceAmount(invoice.total, invoice.currency_code)}</strong></td>
-        <td className="invoice-bank-cell" title={bankSummary}>{bankSummary || '—'}</td>
-        <td>{invoice.document_id && invoice.file_visible ? <button className="invoice-file-button" onClick={() => onDownload?.(invoice)} title={`Download ${invoice.file_name}`}><Download size={14} />{invoice.file_name || 'Download'}</button> : invoice.document_id ? <span className="muted-cell">Private</span> : '—'}</td>
-        <td>{canManage ? <select className="invoice-status-select" aria-label={`Status for ${invoice.invoice_number}`} value={invoice.status} onChange={(event) => onStatusChange?.(invoice, event.target.value as Invoice['status'])}>{invoiceStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select> : <StatusBadge status={invoice.status} />}</td>
-        <td>{canDelete ? <button className="invoice-delete-button" onClick={() => onDelete?.(invoice)} aria-label={`Delete invoice ${invoice.invoice_number}`} title="Delete invoice"><XCircle size={16} /></button> : <span className="muted-cell">—</span>}</td>
-      </tr>;
-    })}</tbody></table>
-    {noItems && <EmptyState text="No invoices match these filters. Upload an invoice or use manual entry to begin." />}
-    {invoices.some((invoice) => invoice.issue) && <div className="table-footnote"><CircleAlert size={14} /> Exception rows require a human review before approval.</div>}
-    {selectedInvoice && <InvoiceDetailsDialog invoice={selectedInvoice} vendor={findVendor(vendors, selectedInvoice.vendor)} onClose={() => setSelectedInvoice(null)} onOpenVendor={(vendor) => { setSelectedInvoice(null); if (vendor) setSelectedVendor(vendor); }} />}
-    {selectedVendor && <VendorDetailsDialog vendor={selectedVendor} invoices={invoices} onClose={() => setSelectedVendor(null)} onOpenInvoice={(invoice) => { setSelectedVendor(null); setSelectedInvoice(invoice); }} />}
-  </div>{selectedInvoice && <InvoiceDetailsDialog invoice={selectedInvoice} vendor={findVendor(vendors, selectedInvoice.vendor)} onClose={() => setSelectedInvoice(null)} onOpenVendor={(vendor) => { setSelectedInvoice(null); if (vendor) setSelectedVendor(vendor); }} />}{selectedVendor && <VendorDetailsDialog vendor={selectedVendor} invoices={invoices} onClose={() => setSelectedVendor(null)} onOpenInvoice={(invoice) => { setSelectedVendor(null); setSelectedInvoice(invoice); }} />}</>;
+  if (compact) return <div className="data-table-wrap"><table className="data-table invoice-table"><thead><tr><th>Invoice</th><th>Supplier</th><th>PO reference</th><th>Total</th><th>AI confidence</th><th>Status</th></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id}><td><div className="invoice-cell"><div className="document-icon"><FileText size={16} /></div><div><button type="button" className="record-link" onClick={() => setSelectedInvoice(invoice)}>{invoice.invoice_number}</button><span>{formatDate(invoice.invoice_date)}</span></div></div></td><td>{invoice.vendor}</td><td className="muted-cell">{invoice.purchase_order}</td><td><strong>{money.format(invoice.total)}</strong></td><td><div className="confidence"><div className="confidence-track"><span style={{ width: `${invoice.confidence}%` }}></span></div><span>{invoice.confidence}%</span></div></td><td><StatusBadge status={invoice.status} /></td></tr>)}</tbody></table>{noItems && <EmptyState text="No invoices in the queue." />}{selectedInvoice && <InvoiceDetailsDialog invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />}</div>;
+  return <><div className="data-table-wrap invoice-table-wrap"><table className="data-table invoice-table"><thead><tr><th>Invoice Number</th><th>PO Number</th><th>Supplier</th><th>Invoice Date</th><th>Description</th><th>HSN</th><th>QTY</th><th>Unit Price</th><th>Total Amount</th><th>Bank Details</th><th>File</th><th>Status</th><th>Actions</th></tr></thead><tbody>{invoices.map((invoice) => {
+    const items = Array.isArray(invoice.extracted_fields?.line_items) ? invoice.extracted_fields.line_items : [];
+    const details = invoice.extracted_fields?.bank_details;
+    const description = items.map((item) => item.description).filter(Boolean).join(', ');
+    const hsn = [...new Set(items.map((item) => item.hsn).filter(Boolean))].join(', ');
+    const quantity = items.reduce((sum, item) => sum + (typeof item.quantity === 'number' ? item.quantity : 0), 0);
+    const unitPrices = [...new Set(items.map((item) => item.unit_price).filter((price): price is number => typeof price === 'number'))];
+    const bankSummary = details ? [details.name, details.account ? `••••${details.account.slice(-4)}` : null, details.ifsc].filter(Boolean).join(' · ') : '';
+    return <tr key={invoice.id}><td><div className="invoice-cell"><div className="document-icon"><FileText size={16} /></div><div><button type="button" className="record-link" onClick={() => setSelectedInvoice(invoice)}>{invoice.invoice_number}</button>{invoice.issue && <span className="invoice-issue">{invoice.issue}</span>}</div></div></td><td className="muted-cell">{invoice.purchase_order || '—'}</td><td>{invoice.vendor}</td><td>{formatDate(invoice.invoice_date)}</td><td className="invoice-truncate" title={description}>{description || '—'}</td><td>{hsn || '—'}</td><td>{items.length ? (quantity || items.length) : '—'}</td><td>{unitPrices.length ? unitPrices.map((price) => formatInvoiceAmount(price, invoice.currency_code)).join(', ') : '—'}</td><td><strong>{formatInvoiceAmount(invoice.total, invoice.currency_code)}</strong></td><td className="invoice-bank-cell" title={bankSummary}>{bankSummary || '—'}</td><td>{invoice.document_id && invoice.file_visible ? <button className="invoice-file-button" onClick={() => onDownload?.(invoice)} title={`Download ${invoice.file_name}`}><Download size={14} />{invoice.file_name || 'Download'}</button> : invoice.document_id ? <span className="muted-cell">Private</span> : '—'}</td><td>{canManage ? <select className="invoice-status-select" aria-label={`Status for ${invoice.invoice_number}`} value={invoice.status} onChange={(event) => onStatusChange?.(invoice, event.target.value as Invoice['status'])}>{invoiceStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select> : <StatusBadge status={invoice.status} />}</td><td>{canDelete ? <button className="invoice-delete-button" onClick={() => onDelete?.(invoice)} aria-label={`Delete invoice ${invoice.invoice_number}`} title="Delete invoice"><XCircle size={16} /></button> : <span className="muted-cell">—</span>}</td></tr>;
+  })}</tbody></table>{noItems && <EmptyState text="No invoices match these filters. Upload an invoice or use manual entry to begin." />}{invoices.some((invoice) => invoice.issue) && <div className="table-footnote"><CircleAlert size={14} /> Exception rows require a human review before approval.</div>}{selectedInvoice && <InvoiceDetailsDialog invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />}</div></>;
 }
-
-function InvoiceDetailsDialog({ invoice, vendor, onClose, onOpenVendor }: { invoice: Invoice; vendor: Vendor | undefined; onClose: () => void; onOpenVendor: (vendor: Vendor | undefined) => void }) {
+function InvoiceDetailsDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const fields = invoice.extracted_fields;
   const items = Array.isArray(fields?.line_items) ? fields.line_items : [];
   const bank = fields?.bank_details;
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card record-details-card" role="dialog" aria-modal="true" aria-labelledby="invoice-details-title">
     <div className="modal-header"><div><p className="eyebrow">Invoice record</p><h2 id="invoice-details-title">{invoice.invoice_number}</h2><span className="asset-modal-model">{formatDate(invoice.invoice_date)} · {formatInvoiceAmount(invoice.total, invoice.currency_code)}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close invoice details"><X size={18} /></button></div>
-    <div className="asset-detail-grid"><div><span>Status</span><StatusBadge status={invoice.status} /></div><div><span>Purchase order</span><strong>{invoice.purchase_order || 'Not linked'}</strong></div><div><span>Invoice date</span><strong>{formatDate(invoice.invoice_date)}</strong></div><div><span>Vendor</span>{vendor ? <button type="button" className="record-link" onClick={() => onOpenVendor(vendor)}>{vendor.legal_name}</button> : <strong>{invoice.vendor || 'Not recorded'}</strong>}</div><div><span>Total amount</span><strong>{formatInvoiceAmount(invoice.total, invoice.currency_code)}</strong></div><div><span>Extraction confidence</span><strong>{invoice.confidence}%</strong></div></div>
+    <div className="asset-detail-grid"><div><span>Status</span><StatusBadge status={invoice.status} /></div><div><span>Purchase order</span><strong>{invoice.purchase_order || 'Not linked'}</strong></div><div><span>Invoice date</span><strong>{formatDate(invoice.invoice_date)}</strong></div><div><span>Supplier</span><strong>{invoice.vendor || 'Not recorded'}</strong></div><div><span>Total amount</span><strong>{formatInvoiceAmount(invoice.total, invoice.currency_code)}</strong></div><div><span>Extraction confidence</span><strong>{invoice.confidence}%</strong></div></div>
     {invoice.issue && <div className="review-warning"><CircleAlert size={16} /><span>{invoice.issue}</span></div>}
     <section className="record-details-section"><h3>Line items</h3>{items.length ? <div className="invoice-line-item-list">{items.map((item, index) => <div key={`${item.hsn || 'item'}-${index}`}><span>{item.description || 'Item description not found'}{item.hsn ? ` · HSN ${item.hsn}` : ''}</span><small>{item.quantity ?? '—'} × {item.unit_price === null ? '—' : formatInvoiceAmount(item.unit_price, invoice.currency_code)}</small></div>)}</div> : <span className="invoice-detail-empty">No line items were recorded.</span>}</section>
     <section className="record-details-section"><h3>Bank details</h3><span>{bank ? [bank.name, bank.account ? `Account ending ${bank.account.slice(-4)}` : null, bank.ifsc, bank.branch].filter(Boolean).join(' · ') || 'No bank details were recorded.' : 'No bank details were recorded.'}</span></section>
     <div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Close</button></div>
   </div></div>;
 }
-
-function VendorDetailsDialog({ vendor, invoices, onClose, onOpenInvoice }: { vendor: Vendor; invoices: Invoice[]; onClose: () => void; onOpenInvoice: (invoice: Invoice) => void }) {
-  const relatedInvoices = invoices.filter((invoice) => invoice.vendor.trim().toLowerCase() === vendor.legal_name.trim().toLowerCase());
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card record-details-card" role="dialog" aria-modal="true" aria-labelledby="vendor-details-title">
-    <div className="modal-header"><div><p className="eyebrow">Vendor profile</p><h2 id="vendor-details-title">{vendor.legal_name}</h2><span className="asset-modal-model">{vendor.contact_name || 'No contact person'}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close vendor details"><X size={18} /></button></div>
-    <div className="asset-detail-grid"><div><span>Status</span><StatusBadge status={vendor.status} /></div><div><span>Contact</span><strong>{vendor.contact_name || 'Not recorded'}</strong></div><div><span>Email</span><strong>{vendor.email || 'Not recorded'}</strong></div><div><span>Phone</span><strong>{vendor.phone || 'Not recorded'}</strong></div><div><span>Tax ID</span><strong>{vendor.tax_id || 'Not recorded'}</strong></div><div><span>Categories</span><strong>{vendor.categories || 'Not recorded'}</strong></div><div className="record-details-wide"><span>Address</span><strong>{vendor.address || 'Not recorded'}</strong></div><div className="record-details-wide"><span>Notes</span><strong>{vendor.notes || 'None'}</strong></div></div>
-    <section className="record-details-section"><h3>Related invoices</h3>{relatedInvoices.length ? <div className="record-related-list">{relatedInvoices.map((invoice) => <button type="button" className="record-related-row" key={invoice.id} onClick={() => onOpenInvoice(invoice)}><span><strong>{invoice.invoice_number}</strong><small>{formatDate(invoice.invoice_date)} · {formatInvoiceAmount(invoice.total, invoice.currency_code)}</small></span><StatusBadge status={invoice.status} /></button>)}</div> : <span className="invoice-detail-empty">No invoices are linked to this vendor name.</span>}</section>
-    <div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Close</button></div>
-  </div></div>;
-}
-
 function MetricCard({ label, value, note, icon: Icon, tone, trend, down }: { label: string; value: string; note: string; icon: typeof Box; tone: string; trend?: string; down?: boolean }) { return <div className="metric-card"><div className={`metric-icon ${tone}`}><Icon size={18} /></div><div className="metric-label">{label}</div><div className="metric-value-row"><strong>{value}</strong>{trend && <span className={`trend ${down ? 'down' : ''}`}>{down ? <ArrowDownRight size={13} /> : <ArrowUpRight size={13} />}{trend}</span>}</div><div className="metric-note">{note}</div></div>; }
 function MiniStat({ label, value, tone }: { label: string; value: string; tone: string }) { return <div className="mini-stat"><span className={`mini-dot ${tone}`}></span><div><span>{label}</span><strong>{value}</strong></div></div>; }
 function PanelHeader({ title, subtitle, action, onAction }: { title: string; subtitle?: string; action?: string; onAction?: () => void }) { return <div className="panel-header"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action && <button className="text-button" onClick={onAction}>{action} <ArrowUpRight size={14} /></button>}</div>; }
@@ -1907,7 +1714,6 @@ function formatDate(value: string) { const parsed = new Date(value); return Numb
 
 function roleLabel(role: string) { return role.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '); }
 function statusLabel(status: string) { return status.split('_').map((part) => part.charAt(0) + part.slice(1).toLowerCase()).join(' '); }
-function findVendor(vendors: Vendor[], name: string) { return vendors.find((vendor) => vendor.legal_name.trim().toLowerCase() === name.trim().toLowerCase()); }
 function formatInvoiceAmount(amount: number, currency: string) {
   try {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency || 'INR', maximumFractionDigits: 2 }).format(amount);
@@ -1925,7 +1731,15 @@ function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
   const [fullName, setFullName] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [googleClientId, setGoogleClientId] = useState<string>(GOOGLE_CLIENT_ID || '');
   const googleButtonRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let active = true;
+    api.get<{ configured: boolean; clientId: string }>('/api/auth/google-config')
+      .then((config) => { if (active) setGoogleClientId(config.clientId || ''); })
+      .catch(() => { if (active && !GOOGLE_CLIENT_ID) setGoogleClientId(''); });
+    return () => { active = false; };
+  }, []);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true);
@@ -1954,7 +1768,7 @@ function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
     }
   }, [onAuth]);
   useEffect(() => {
-    if (mode !== 'sign-in' || !GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
+    if (mode !== 'sign-in' || !googleClientId || !googleButtonRef.current) return;
     let active = true;
     const renderGoogleButton = () => {
       const google = window.google;
@@ -1962,7 +1776,7 @@ function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
       if (!active || !google || !container) return;
       container.replaceChildren();
       google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
+        client_id: googleClientId,
         callback: (response) => void signInWithGoogle(response.credential),
       });
       google.accounts.id.renderButton(container, {
@@ -1995,8 +1809,8 @@ function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
       script?.removeEventListener('load', onLoad);
       script?.removeEventListener('error', onError);
     };
-  }, [mode, signInWithGoogle]);
-  return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control procurement, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message" role="alert">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form>{mode === 'sign-in' && <><div className="auth-divider"><span>or continue with</span></div>{GOOGLE_CLIENT_ID ? <div className="google-signin" ref={googleButtonRef} aria-label="Sign in with Google" /> : <button type="button" className="button button-google" onClick={() => setMessage('Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID and VITE_GOOGLE_CLIENT_ID to the server and frontend environment, then restart the app.')}><svg aria-hidden="true" viewBox="0 0 48 48" width="18" height="18"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.9 6.1-15z" /><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9L30.9 34c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44z" /><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3z" /><path fill="#EA4335" d="M24 11.9c3 0 5.7 1 7.8 3.1l5.9-5.9C34.1 5.8 29.5 4 24 4A20 20 0 0 0 5.8 15.1l6.8 5.3c1.6-4.9 6.1-8.5 11.4-8.5z" /></svg>Login with Google</button>}</>}<button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Bigbasket? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
+  }, [mode, googleClientId, signInWithGoogle]);
+  return <div className="auth-shell"><div className="auth-visual"><div className="auth-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div></div><div className="auth-visual-copy"><span className="eyebrow">Enterprise asset intelligence</span><h1>Make every asset<br /><em>accountable.</em></h1><p>Control assets, inventory, service, and spend from one trusted operational record.</p><div className="auth-signal"><span className="signal-dot"></span><span>Secure workspace controls active</span><ShieldCheck size={15} /></div></div></div><div className="auth-panel"><div className="auth-panel-inner"><div className="auth-mobile-brand"><img className="brand-logo auth-logo" src="/images/images.jpeg" alt="Bigbasket" /><div className="brand-name">bigbasket</div></div><span className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace account'}</span><h2>{mode === 'sign-in' ? 'Sign in to operations' : 'Start with your team'}</h2><p className="auth-copy">{mode === 'sign-in' ? 'Access your organization’s asset and workflow records.' : 'Your first account becomes the workspace administrator.'}</p><form onSubmit={submit} className="auth-form">{mode === 'sign-up' && <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" /></label>}<label>Work email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@bigbasket.com" /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <div className="auth-message" role="alert">{message}</div>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}{busy ? 'Working...' : mode === 'sign-in' ? 'Sign in securely' : 'Create account'}</button></form>{mode === 'sign-in' && <><div className="auth-divider"><span>or continue with</span></div>{googleClientId ? <div className="google-signin" ref={googleButtonRef} aria-label="Sign in with Google" /> : <button type="button" className="button button-google" onClick={() => setMessage('Google sign-in is not configured yet. Ask a workspace administrator to configure it under Settings → Email Settings.')}><svg aria-hidden="true" viewBox="0 0 48 48" width="18" height="18"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.9 6.1-15z" /><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9L30.9 34c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44z" /><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3z" /><path fill="#EA4335" d="M24 11.9c3 0 5.7 1 7.8 3.1l5.9-5.9C34.1 5.8 29.5 4 24 4A20 20 0 0 0 5.8 15.1l6.8 5.3c1.6-4.9 6.1-8.5 11.4-8.5z" /></svg>Login with Google</button>}</>}<button className="auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>{mode === 'sign-in' ? 'New to Bigbasket? Create an account' : 'Already have an account? Sign in'}</button><div className="auth-footnote"><ShieldCheck size={14} /> Role-aware access, audit history, and private documents</div></div></div></div>;
 }
 
 type InvoiceExtraction = {
@@ -2113,7 +1927,7 @@ function InvoiceUploadModal({ onClose, onSaved }: { onClose: () => void; onSaved
     <div className="modal-header"><div><p className="eyebrow">Local document scanning</p><h2 id="invoice-upload-title">Upload Invoice</h2><span className="invoice-modal-subtitle">{extraction ? 'Review the scanned invoice details before adding them to the register.' : 'The scanner will extract invoice details for your review.'}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div>
     {extraction ? <div className="extraction-result">
       <div className="ai-result-banner"><Sparkles size={18} /><div><strong>Review extracted details</strong><span>{extraction.confidence}% confidence · Check the fields before adding the invoice</span></div></div>
-      <div className="form-grid invoice-review-fields"><label>Invoice number<input required value={draft.invoice_number} onChange={(event) => setDraft({ ...draft, invoice_number: event.target.value })} /></label><label>Vendor name<input required value={draft.vendor} onChange={(event) => setDraft({ ...draft, vendor: event.target.value })} /></label><label>PO number<input value={draft.purchase_order} onChange={(event) => setDraft({ ...draft, purchase_order: event.target.value })} /></label><label>Invoice date<input type="date" value={draft.invoice_date} onChange={(event) => setDraft({ ...draft, invoice_date: event.target.value })} /></label><label>Total amount<input required type="number" min="0" step="0.01" value={draft.total} onChange={(event) => setDraft({ ...draft, total: event.target.value })} /></label><label>Currency<input value={extraction.currency || 'INR'} readOnly /></label></div>
+      <div className="form-grid invoice-review-fields"><label>Invoice number<input required value={draft.invoice_number} onChange={(event) => setDraft({ ...draft, invoice_number: event.target.value })} /></label><label>Supplier name<input required value={draft.vendor} onChange={(event) => setDraft({ ...draft, vendor: event.target.value })} /></label><label>PO number<input value={draft.purchase_order} onChange={(event) => setDraft({ ...draft, purchase_order: event.target.value })} /></label><label>Invoice date<input type="date" value={draft.invoice_date} onChange={(event) => setDraft({ ...draft, invoice_date: event.target.value })} /></label><label>Total amount<input required type="number" min="0" step="0.01" value={draft.total} onChange={(event) => setDraft({ ...draft, total: event.target.value })} /></label><label>Currency<input value={extraction.currency || 'INR'} readOnly /></label></div>
       {extraction.review_reason && <div className="review-warning"><CircleAlert size={16} /><span>{extraction.review_reason}</span></div>}
       <div className="invoice-extraction-details">
         <strong>Line items</strong>{lineItems.length ? <div className="invoice-line-item-list">{lineItems.map((item, index) => <div key={`${item.hsn || 'item'}-${index}`}><span>{item.description || 'Item description not found'}{item.hsn ? ` · HSN ${item.hsn}` : ''}</span><small>{item.quantity ?? '—'} × {item.unit_price === null ? '—' : money.format(item.unit_price)}</small></div>)}</div> : <span className="invoice-detail-empty">No line items were found.</span>}
@@ -2124,7 +1938,7 @@ function InvoiceUploadModal({ onClose, onSaved }: { onClose: () => void; onSaved
       <div className="ai-trust-note"><ShieldCheck size={15} /><span>Invoice files are scanned locally and stay access-controlled in this workspace.</span></div>
       <div className="modal-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="button" className="button button-primary" disabled={busy} onClick={() => void saveInvoice()}>{busy ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}{busy ? 'Saving...' : 'Add to invoice register'}</button></div>
     </div> : <form onSubmit={submit}>
-      <div className="invoice-extract-summary"><strong>Local scanning will automatically extract:</strong><ul><li>Invoice number, PO number, date, currency, and total</li><li>Vendor, line items, HSN, quantity, and unit price</li><li>Bank details (name, account, IFSC, branch)</li><li>Asset details including make, model, and serial number</li></ul></div>
+      <div className="invoice-extract-summary"><strong>Local scanning will automatically extract:</strong><ul><li>Invoice number, PO number, date, currency, and total</li><li>Supplier, line items, HSN, quantity, and unit price</li><li>Bank details (name, account, IFSC, branch)</li><li>Asset details including make, model, and serial number</li></ul></div>
       <label className="invoice-pdf-label">Select invoice file<input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setMessage(''); }} /></label>
       <span className="invoice-file-hint">{file ? `${file.name} · ${Math.ceil(file.size / 1024)} KB` : 'PDF, PNG, JPG, or WebP · maximum 10 MB'}</span>
       {message && <div className="auth-message">{message}</div>}
@@ -2151,7 +1965,7 @@ function ManualInvoiceModal({ onClose, onSaved }: { onClose: () => void; onSaved
       setBusy(false);
     }
   };
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><form className="modal-card manual-invoice-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Finance / Payables</p><h2>Manual invoice entry</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div><div className="form-grid"><label>Invoice number<input required value={form.invoice_number} onChange={(event) => setForm({ ...form, invoice_number: event.target.value })} /></label><label>PO number<input value={form.purchase_order} onChange={(event) => setForm({ ...form, purchase_order: event.target.value })} /></label><label>Vendor name<input required value={form.vendor} onChange={(event) => setForm({ ...form, vendor: event.target.value })} /></label><label>Invoice date<input required type="date" value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value })} /></label><label>Total amount<input required type="number" min="0" step="0.01" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} /></label><label>Currency<input required maxLength={3} value={form.currency_code} onChange={(event) => setForm({ ...form, currency_code: event.target.value.toUpperCase() })} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}{busy ? 'Saving...' : 'Add invoice'}</button></div></form></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><form className="modal-card manual-invoice-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Finance / Payables</p><h2>Manual invoice entry</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={18} /></button></div><div className="form-grid"><label>Invoice number<input required value={form.invoice_number} onChange={(event) => setForm({ ...form, invoice_number: event.target.value })} /></label><label>PO number<input value={form.purchase_order} onChange={(event) => setForm({ ...form, purchase_order: event.target.value })} /></label><label>Supplier name<input required value={form.vendor} onChange={(event) => setForm({ ...form, vendor: event.target.value })} /></label><label>Invoice date<input required type="date" value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value })} /></label><label>Total amount<input required type="number" min="0" step="0.01" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} /></label><label>Currency<input required maxLength={3} value={form.currency_code} onChange={(event) => setForm({ ...form, currency_code: event.target.value.toUpperCase() })} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}{busy ? 'Saving...' : 'Add invoice'}</button></div></form></div>;
 }
 
 function readAsDataUrl(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Could not read the selected file. Try opening it and saving a new PDF or image copy.')); reader.readAsDataURL(file); }); }
@@ -2175,33 +1989,6 @@ function AssetModal({ userName, department, onClose, onSaved }: { userName: stri
     }
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Asset register</p><h2>Add new asset</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label>Asset tag<input required value={form.asset_tag} onChange={(event) => update('asset_tag', event.target.value)} placeholder="IT-LAP-0007" /></label><label>Category<select value={form.category} onChange={(event) => update('category', event.target.value)}><option>Laptop</option><option>Monitor</option><option>Mobile</option><option>Network device</option><option>Server</option></select></label><label>Manufacturer<input required value={form.manufacturer} onChange={(event) => update('manufacturer', event.target.value)} placeholder="Dell" /></label><label>Model<input required value={form.model} onChange={(event) => update('model', event.target.value)} placeholder="Latitude 7450" /></label><label>Serial number<input required value={form.serial_number} onChange={(event) => update('serial_number', event.target.value)} placeholder="SN-000000" /></label><label>Department<input required value={form.department} onChange={(event) => update('department', event.target.value)} placeholder="Engineering" /></label><label>Custodian<input required value={form.custodian} onChange={(event) => update('custodian', event.target.value)} placeholder="Asset custodian" /></label><label>Location<input required value={form.location} onChange={(event) => update('location', event.target.value)} placeholder="HQ / Floor 1" /></label><label>Purchase cost<input required type="number" min="0" value={form.purchase_cost} onChange={(event) => update('purchase_cost', event.target.value)} placeholder="0" /></label><label>Warranty start<input type="date" max={form.warranty_end || undefined} value={form.warranty_start} onChange={(event) => update('warranty_start', event.target.value)} /></label><label>Warranty end<input type="date" min={form.warranty_start || undefined} value={form.warranty_end} onChange={(event) => update('warranty_end', event.target.value)} /></label><div className="warranty-lookup-form-row"><span className="warranty-lookup-label">Manufacturer warranty lookup</span><WarrantyLookupLink manufacturer={form.manufacturer} serialNumber={form.serial_number} /></div></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Saving...' : 'Add asset'}</button></div></form></div>;
-}
-
-function PurchaseRequestModal({ userName, department, onClose, onSaved }: { userName: string; department: string; onClose: () => void; onSaved: () => void }) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ title: '', requester: userName, department, amount: '', needed_by: '' });
-  const update = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    const amount = Number(form.amount);
-    if (!form.amount || !Number.isFinite(amount) || amount <= 0) {
-      setSaving(false);
-      setError('Enter an estimated amount greater than zero.');
-      return;
-    }
-    try {
-      await api.post('/api/purchase-requests', { title: form.title, requester: form.requester, department: form.department, amount, needed_by: form.needed_by });
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not create the request. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Procurement</p><h2>New purchase request</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label className="span-2">Title<input required value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="What do you need to purchase?" /></label><label>Requester<input required value={form.requester} onChange={(event) => update('requester', event.target.value)} /></label><label>Department<input required value={form.department} onChange={(event) => update('department', event.target.value)} /></label><label>Estimated amount (₹)<input required type="number" min="1" step="0.01" value={form.amount} onChange={(event) => update('amount', event.target.value)} placeholder="0" /></label><label>Needed by<input required type="date" min={new Date().toISOString().slice(0, 10)} value={form.needed_by} onChange={(event) => update('needed_by', event.target.value)} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Submitting...' : 'Submit request'}</button></div></form></div>;
 }
 
 export default App;

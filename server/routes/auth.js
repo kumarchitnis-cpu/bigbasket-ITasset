@@ -7,6 +7,24 @@ import { requireAuth } from '../rbac.js';
 
 const router = Router();
 
+function googleClientId() {
+  const row = getDb().prepare("SELECT settings FROM workspace_settings WHERE id = 'workspace'").get();
+  if (row) {
+    const configured = JSON.parse(row.settings).googleClientId;
+    if (typeof configured === 'string' && configured.trim()) return configured.trim();
+  }
+  return process.env.GOOGLE_CLIENT_ID || '';
+}
+
+router.get('/google-config', (req, res, next) => {
+  try {
+    const clientId = googleClientId();
+    res.json({ configured: Boolean(clientId), clientId });
+  } catch (error) {
+    next(error);
+  }
+});
+
 function publicUser(row) {
   return {
     id: row.id,
@@ -61,7 +79,7 @@ router.post('/signin', (req, res, next) => {
 });
 
 router.post('/google', async (req, res, next) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientId = googleClientId();
   const credential = typeof req.body?.credential === 'string' ? req.body.credential : '';
   if (!clientId) return res.status(503).json({ error: 'Google sign-in is not configured. Contact your workspace administrator.' });
   if (!credential) return res.status(400).json({ error: 'A Google credential is required.' });

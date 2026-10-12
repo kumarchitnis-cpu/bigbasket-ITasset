@@ -196,7 +196,7 @@ router.get('/receipts', (req, res, next) => {
   }
 });
 
-router.post('/receipts', requireRole('admin', 'it_asset_manager', 'procurement_officer'), (req, res, next) => {
+router.post('/receipts', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
   try {
     const body = req.body ?? {};
     if (!body.purchase_order || !body.vendor) {
@@ -227,7 +227,7 @@ router.post('/receipts', requireRole('admin', 'it_asset_manager', 'procurement_o
   }
 });
 
-router.put('/receipts/:id', requireRole('admin', 'it_asset_manager', 'procurement_officer'), (req, res, next) => {
+router.put('/receipts/:id', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM it_goods_receipts WHERE id = ?').get(req.params.id);

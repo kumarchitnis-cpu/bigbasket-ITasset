@@ -4,7 +4,7 @@ import { hashPassword } from '../auth.js';
 import { requireAuth, requireRole } from '../rbac.js';
 
 const router = Router();
-const ROLES = ['admin', 'it_asset_manager', 'procurement_officer', 'finance_officer', 'approver', 'employee', 'auditor'];
+const ROLES = ['admin', 'it_asset_manager', 'finance_officer', 'approver', 'employee', 'auditor'];
 
 router.use(requireAuth, requireRole('admin'));
 
