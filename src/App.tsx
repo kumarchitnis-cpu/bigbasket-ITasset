@@ -336,7 +336,6 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -370,7 +369,6 @@ function App() {
         setSearchOpen(false);
         setUserMenuOpen(false);
         setMobileNavOpen(false);
-        setGuideOpen(false);
         searchInputRef.current?.blur();
       }
     };
@@ -505,7 +503,7 @@ function App() {
         </div>
         <div className="nav-section-label">Workspace</div>
         <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => (label !== 'User Management' || user.role === 'admin') && (label !== 'Vendors' || ['admin', 'procurement_officer', 'approver'].includes(user.role))).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
-        <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><strong>Need a hand?</strong><span>View the operations guide</span><button onClick={() => setGuideOpen(true)}>Open guide <ArrowUpRight size={13} /></button></div><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
+        <div className="sidebar-bottom"><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
       <main className="main-area">
@@ -529,41 +527,8 @@ function App() {
           </>}
         </div>
       </main>
-      {guideOpen && <OperationsGuide isAdmin={user.role === 'admin'} onClose={() => setGuideOpen(false)} onNavigate={(tab) => { setGuideOpen(false); showTab(tab); }} />}
       {assetModalOpen && <AssetModal userName={user.full_name} department={user.department} onClose={() => setAssetModalOpen(false)} onSaved={() => { setAssetModalOpen(false); void loadData(true); }} />}
       {refreshing && <div className="refresh-indicator"><Loader2 size={15} className="spin" /> Updating workspace</div>}
-    </div>
-  );
-}
-
-function OperationsGuide({ isAdmin, onClose, onNavigate }: { isAdmin: boolean; onClose: () => void; onNavigate: (tab: Tab) => void }) {
-  const sections: { title: string; description: string; tab: Tab; link: string }[] = [
-    { title: 'Assets', description: 'Browse the asset register and track assignment, return, transfer, audit, and maintenance activity.', tab: 'Assets', link: 'Go to assets' },
-    { title: 'Employee equipment', description: 'Employees can submit equipment requests; asset managers and admins can review pending requests.', tab: 'Emp Asset Mgmt', link: 'Open equipment requests' },
-    { title: 'Procurement and invoices', description: 'Track purchase requests in Procurement. Finance officers and admins can manage invoices and review extracted details.', tab: 'Procurement', link: 'Open procurement' },
-    { title: 'Inventory', description: 'Review available registered assets and goods receipt history.', tab: 'Inventory', link: 'Open inventory' },
-    { title: 'Warranties', description: 'Review active coverage, upcoming expirations, expired assets, and unknown coverage.', tab: 'Warranties', link: 'Open warranty report' },
-    { title: 'Service desk', description: 'Create and follow support tickets, including priority, assignment, and resolution status.', tab: 'Service desk', link: 'Open service desk' },
-    { title: 'Roles and access', description: 'Available actions depend on your workspace role. Admins can manage users and assign roles from User Management.', tab: 'User Management', link: 'Manage users' },
-  ];
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="modal-card guide-modal" role="dialog" aria-modal="true" aria-labelledby="operations-guide-title">
-        <div className="modal-header">
-          <div><p className="eyebrow">Help center</p><h2 id="operations-guide-title">Operations guide</h2></div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close operations guide"><X size={18} /></button>
-        </div>
-        <p className="guide-intro">Quick tips for common workflows in your Bigbasket operations workspace.</p>
-        <div className="guide-sections">
-          {sections.filter(({ tab }) => tab !== 'User Management' || isAdmin).map(({ title, description, tab, link }) => (
-            <article className="guide-section" key={title}>
-              <div><h3>{title}</h3><p>{description}</p></div>
-              <button type="button" className="guide-link" onClick={() => onNavigate(tab)}>{link}<ArrowUpRight size={13} /></button>
-            </article>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
