@@ -1421,7 +1421,7 @@ function NotificationsView({ notifications, onRead }: { notifications: Workspace
   return <div className="fade-in"><PageTitle eyebrow="Workspace / Activity" title="Notifications" copy="Requests and workflow updates relevant to your account." />{error && <div className="auth-message module-error">{error}</div>}<section className="panel table-panel full-panel"><PanelHeader title="Recent notifications" subtitle={`${notifications.filter((notification) => !notification.read_at).length} unread`} /><div className="notification-list">{notifications.map((notification) => <article className={`notification-row ${notification.read_at ? '' : 'unread'}`} key={notification.id}><div className="notification-icon"><Bell size={16} /></div><div className="notification-copy"><strong>{notification.title}</strong><span>{notification.body}</span><small>{formatDateTime(notification.created_at)}</small></div>{!notification.read_at && <button className="button button-secondary mark-read-button" onClick={() => void markRead(notification.id)}>Mark read</button>}</article>)}</div>{notifications.length === 0 && <EmptyState text="You have no notifications yet." />}</section></div>;
 }
 
-type SettingsSection = 'Company' | 'Branding' | 'Procurement' | 'Approvals' | 'Notifications' | 'AP Escalation' | 'SLA';
+type SettingsSection = 'Company' | 'Branding' | 'Procurement' | 'Approvals' | 'Notifications' | 'AP Escalation' | 'SLA' | 'ManageEngine';
 type StringSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends string ? K : never }[keyof WorkspaceSettings];
 type NumberSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends number ? K : never }[keyof WorkspaceSettings];
 type BooleanSetting = { [K in keyof WorkspaceSettings]: WorkspaceSettings[K] extends boolean ? K : never }[keyof WorkspaceSettings];
@@ -1434,7 +1434,16 @@ const settingsSections: { label: SettingsSection; icon: typeof LayoutDashboard }
   { label: 'Notifications', icon: Bell },
   { label: 'AP Escalation', icon: CircleAlert },
   { label: 'SLA', icon: ShieldCheck },
+  { label: 'ManageEngine', icon: RefreshCw },
 ];
+
+type ManageEngineStatus = {
+  configured: boolean;
+  apiBaseUrl: string;
+  oauthUrl: string;
+  requiredScopes: string[];
+  assetWarrantyWriteBackAvailable: boolean;
+};
 
 function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUser) => void }) {
   const [settings, setSettings] = useState<WorkspaceSettings | null>(null);
@@ -1448,6 +1457,10 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
   const [error, setError] = useState<string | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [manageEngineStatus, setManageEngineStatus] = useState<ManageEngineStatus | null>(null);
+  const [manageEngineTesting, setManageEngineTesting] = useState(false);
+  const [manageEngineMessage, setManageEngineMessage] = useState<string | null>(null);
+  const [manageEngineError, setManageEngineError] = useState<string | null>(null);
   const isAdmin = user.role === 'admin';
 
   const loadSettings = useCallback(async () => {
@@ -1465,6 +1478,28 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (section !== 'ManageEngine') return;
+    setManageEngineError(null);
+    api.get<ManageEngineStatus>('/api/integrations/manageengine')
+      .then(setManageEngineStatus)
+      .catch((err: unknown) => setManageEngineError(err instanceof ApiError ? err.message : 'Could not load ManageEngine integration status.'));
+  }, [section]);
+
+  const testManageEngineConnection = async () => {
+    setManageEngineTesting(true);
+    setManageEngineError(null);
+    setManageEngineMessage(null);
+    try {
+      const result = await api.post<{ connected: boolean; checked: string[] }>('/api/integrations/manageengine/test-connection', {});
+      setManageEngineMessage(`Connected. Verified ${result.checked.join(' and ')} access.`);
+    } catch (err) {
+      setManageEngineError(err instanceof ApiError ? err.message : 'Could not connect to ManageEngine.');
+    } finally {
+      setManageEngineTesting(false);
+    }
+  };
 
   const updateSetting = <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]) => {
     setSettings((current) => current ? { ...current, [key]: value } : current);
@@ -1546,14 +1581,28 @@ function SettingsView({ user, onSaved }: { user: AppUser; onSaved: (user: AppUse
         return <div className="settings-sla-row" key={priority}><strong>{priority}</strong>{numberInput(`${priority} response target`, `sla${priority}ResponseHours` as NumberSetting, 1)}{numberInput(`${priority} resolution target`, `sla${priority}ResolutionHours` as NumberSetting, 1)}</div>;
       })}</div>;
       break;
+    case 'ManageEngine':
+      sectionContent = <div className="settings-integration">
+        <div className="settings-integration-heading"><div><h3>ManageEngine Endpoint Central</h3><p>Connect your Endpoint Central Cloud tenant to prepare inventory, warranty, and user synchronization.</p></div><span className={`integration-status ${manageEngineStatus?.configured ? 'connected' : 'pending'}`}>{manageEngineStatus?.configured ? 'Credentials configured' : 'Not configured'}</span></div>
+        <div className="settings-fields">
+          <label>Endpoint Central API URL<input value={manageEngineStatus?.apiBaseUrl ?? 'Loading...'} readOnly /></label>
+          <label>Zoho OAuth URL<input value={manageEngineStatus?.oauthUrl ?? 'Loading...'} readOnly /></label>
+        </div>
+        <div className="integration-scopes"><strong>Required OAuth scopes</strong><ul>{(manageEngineStatus?.requiredScopes ?? []).map((scope) => <li key={scope}><code>{scope}</code></li>)}</ul></div>
+        <p className="settings-help">Configure the OAuth client ID, client secret, and refresh token in the API server's .env file, then restart the server. Credentials are never sent to the browser. Endpoint Central exposes computer inventory, warranty, and assigned-user data for reading; asset and warranty write-back will remain disabled until its supported write API is provided.</p>
+        {manageEngineError && <div className="auth-message" role="alert">{manageEngineError}</div>}
+        {manageEngineMessage && <div className="settings-success" role="status">{manageEngineMessage}</div>}
+        <div className="settings-integration-actions"><button type="button" className="button button-secondary" onClick={() => void testManageEngineConnection()} disabled={!isAdmin || !manageEngineStatus?.configured || manageEngineTesting}>{manageEngineTesting ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}{manageEngineTesting ? 'Testing...' : 'Test connection'}</button><a className="text-button" href="https://www.manageengine.com/products/desktop-central/help/api/cloud/api-index.html" target="_blank" rel="noreferrer">Endpoint Central API documentation <ArrowUpRight size={14} /></a></div>
+      </div>;
+      break;
   }
 
   return <div className="fade-in"><PageTitle eyebrow="Workspace / Preferences" title="Settings" copy="Company, procurement, notifications, and SLA" />
-    <div className="settings-tabs" role="tablist" aria-label="Workspace setting categories">{settingsSections.map(({ label, icon: Icon }) => <button type="button" role="tab" aria-selected={section === label} className={`settings-tab ${section === label ? 'active' : ''}`} key={label} onClick={() => { setSection(label); setMessage(null); setError(null); }}><Icon size={16} />{label}</button>)}</div>
+    <div className="settings-tabs" role="tablist" aria-label="Workspace setting categories">{settingsSections.filter(({ label }) => label !== 'ManageEngine' || isAdmin).map(({ label, icon: Icon }) => <button type="button" role="tab" aria-selected={section === label} className={`settings-tab ${section === label ? 'active' : ''}`} key={label} onClick={() => { setSection(label); setMessage(null); setError(null); }}><Icon size={16} />{label}</button>)}</div>
     <form className="panel settings-workspace-form" onSubmit={submitSettings}><section role="tabpanel" aria-label={`${section} settings`} className="settings-section">{sectionContent}</section>
       {!isAdmin && <p className="settings-help">Only a workspace administrator can change company settings.</p>}
       {error && <div className="auth-message">{error}</div>}{message && <div className="settings-success" role="status">{message}</div>}
-      {isAdmin && <div className="settings-save-row"><button className="button button-primary" disabled={saving}>{saving ? 'Saving...' : 'Save settings'}</button></div>}
+      {isAdmin && section !== 'ManageEngine' && <div className="settings-save-row"><button className="button button-primary" disabled={saving}>{saving ? 'Saving...' : 'Save settings'}</button></div>}
     </form>
     <div className="settings-profile-grid"><section className="panel settings-panel"><PanelHeader title="My profile" subtitle="These details appear in asset and workflow records." /><form className="settings-form" onSubmit={submitProfile}><label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} /></label><label>Department<input required value={department} onChange={(event) => setDepartment(event.target.value)} /></label><label>Work email<input value={user.email} disabled /></label>{profileError && <div className="auth-message">{profileError}</div>}{profileMessage && <div className="settings-success" role="status">{profileMessage}</div>}<button className="button button-primary" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save profile'}</button></form></section>
       <section className="panel settings-panel"><PanelHeader title="Account access" subtitle="Workspace role and sign-in details" /><div className="settings-account"><div><span>Access role</span><strong>{roleLabel(user.role)}</strong></div><div><span>Department</span><strong>{user.department}</strong></div><div><span>Account status</span><strong>{user.active ? 'Active' : 'Inactive'}</strong></div><p>Role changes are managed by a workspace administrator.</p></div></section></div>
@@ -1738,7 +1787,9 @@ function AssistantView({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   </div>;
 }
 
-function AssetTable({ assets, compact = false, onManage, onOpenWarranties }: { assets: Asset[]; compact?: boolean; onManage?: (asset: Asset) => void; onOpenWarranties?: () => void }) { return <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Asset</th><th>Category</th><th>Custodian</th><th>Location</th><th>Status</th>{!compact && <th>Warranty</th>}<th></th></tr></thead><tbody>{assets.map((asset) => <tr key={asset.id}><td><div className="asset-cell"><div className={`asset-type-icon ${asset.category.toLowerCase().replace(' ', '-')}`}><Laptop size={16} /></div><div><strong>{asset.asset_tag}</strong><span>{asset.manufacturer} {asset.model}</span></div></div></td><td>{asset.category}</td><td><div className="person-cell"><div className="avatar avatar-small">{initials(asset.custodian)}</div><span>{asset.custodian}</span></div></td><td>{asset.location}</td><td><StatusBadge status={asset.status} /></td>{!compact && <td>{onOpenWarranties ? <button className="warranty-date-link" onClick={onOpenWarranties}>{asset.warranty_end ? formatDate(asset.warranty_end) : 'Not recorded'}</button> : asset.warranty_end ? formatDate(asset.warranty_end) : '—'}</td>}<td>{onManage ? <button className="row-action" onClick={() => onManage(asset)}><Activity size={14} /> History</button> : <button className="row-more" aria-label={`More options for ${asset.asset_tag}`}>•••</button>}</td></tr>)}</tbody></table>{assets.length === 0 && <EmptyState text="No assets match this search." />}</div>; }
+function AssetTable({ assets, compact = false, onManage, onOpenWarranties }: { assets: Asset[]; compact?: boolean; onManage?: (asset: Asset) => void; onOpenWarranties?: () => void }) {
+  return <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Asset</th><th>Category</th><th>Custodian</th><th>Location</th><th>Status</th>{!compact && <th>Warranty</th>}<th></th></tr></thead><tbody>{assets.map((asset) => <tr key={asset.id}><td><div className="asset-cell"><div className={`asset-type-icon ${asset.category.toLowerCase().replace(' ', '-')}`}><Laptop size={16} /></div><div>{onManage ? <button type="button" className="record-link" onClick={() => onManage(asset)}>{asset.asset_tag}</button> : <strong>{asset.asset_tag}</strong>}<span>{asset.manufacturer} {asset.model}</span></div></div></td><td>{asset.category}</td><td><div className="person-cell"><div className="avatar avatar-small">{initials(asset.custodian)}</div><span>{asset.custodian}</span></div></td><td>{asset.location}</td><td><StatusBadge status={asset.status} /></td>{!compact && <td>{onOpenWarranties ? <button className="warranty-date-link" onClick={onOpenWarranties}>{asset.warranty_end ? formatDate(asset.warranty_end) : 'Not recorded'}</button> : asset.warranty_end ? formatDate(asset.warranty_end) : '—'}</td>}<td>{onManage ? <button className="row-action" onClick={() => onManage(asset)}><Activity size={14} /> History</button> : <button className="row-more" aria-label={`More options for ${asset.asset_tag}`}>•••</button>}</td></tr>)}</tbody></table>{assets.length === 0 && <EmptyState text="No assets match this search." />}</div>;
+}
 
 const assetActionLabels: Record<AssetEventType, string> = {
   ASSIGNED: 'Assign',

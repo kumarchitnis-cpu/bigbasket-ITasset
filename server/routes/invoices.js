@@ -155,3 +155,4 @@ router.post('/process', requireRole('admin', 'finance_officer'), async (req, res
       return res.status(413).json({ error: 'The invoice document is too large to review.' });
     }
     audit(req.user.id, 'UPLOAD', 'invoice', id, 'SUCCESS');
+    res.json({ id });

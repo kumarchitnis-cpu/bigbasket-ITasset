@@ -40,6 +40,11 @@ Copy `.env.example` to `.env`:
 - `VITE_GOOGLE_CLIENT_ID` — the same Google OAuth Web Client ID, exposed to the browser by Vite
 - `TESSDATA_DIR` — optional local directory containing uncompressed `eng.traineddata` for offline OCR model provisioning
 - `OPENAI_API_KEY` — optional server-side key for the separate AI Assistant only; invoice and document scanning never call OpenAI
+- `MANAGEENGINE_CLIENT_ID`, `MANAGEENGINE_CLIENT_SECRET`, `MANAGEENGINE_REFRESH_TOKEN` — optional server-side Zoho OAuth credentials for Endpoint Central Cloud. These must never use a `VITE_` prefix.
+- `MANAGEENGINE_API_BASE_URL` — optional Endpoint Central API base URL (defaults to `https://endpointcentral.manageengine.in`)
+- `MANAGEENGINE_OAUTH_URL` — optional Zoho OAuth token URL (defaults to `https://accounts.zoho.in/oauth/v2/token`)
+
+The ManageEngine integration status and connection test are available to workspace admins under **Settings → ManageEngine**. Configure credentials in the API server's `.env` and restart the server. The connection test verifies read access to computer inventory and the user directory. Asset/warranty data write-back is not enabled until the supported Endpoint Central write API is confirmed.
 
 ## Roles
 

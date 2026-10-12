@@ -13,6 +13,7 @@ import { assistantRouter } from './routes/assistant.js';
 import { usersRouter } from './routes/users.js';
 import { settingsRouter } from './routes/settings.js';
 import { vendorsRouter } from './routes/vendors.js';
+import { integrationsRouter } from './routes/integrations.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -36,6 +37,7 @@ app.use('/api/workflows', assetWorkflowsRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/integrations', integrationsRouter);
 app.use('/api', miscRouter);
 
 app.use((err, req, res, next) => {

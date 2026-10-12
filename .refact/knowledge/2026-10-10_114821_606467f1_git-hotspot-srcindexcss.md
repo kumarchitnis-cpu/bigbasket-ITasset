@@ -6,7 +6,7 @@ tags:
 - git
 - hotspot
 created: 2026-10-10
-updated: 2026-10-11
+updated: 2026-10-12
 filenames:
 - src/index.css
 links: []
@@ -14,7 +14,7 @@ kind: code
 status: proposed
 superseded_by: null
 deprecated_at: null
-review_after: 2026-10-11
+review_after: 2026-10-12
 source_chat_id: null
 created_at: 2026-10-10T06:18:21.456485400+00:00
 summary: null
