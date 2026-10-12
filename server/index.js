@@ -5,7 +5,6 @@ import { ensureSchema } from './db.js';
 import { authRouter } from './routes/auth.js';
 import { assetsRouter } from './routes/assets.js';
 import { invoicesRouter } from './routes/invoices.js';
-import { ticketsRouter } from './routes/tickets.js';
 import { purchaseRequestsRouter } from './routes/purchase-requests.js';
 import { miscRouter } from './routes/misc.js';
 import { assetWorkflowsRouter } from './routes/asset-workflows.js';
@@ -30,7 +29,6 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/assets', assetsRouter);
 app.use('/api/invoices', invoicesRouter);
-app.use('/api/tickets', ticketsRouter);
 app.use('/api/purchase-requests', purchaseRequestsRouter);
 app.use('/api/vendors', vendorsRouter);
 app.use('/api/workflows', assetWorkflowsRouter);

@@ -68,8 +68,8 @@ router.post('/google', async (req, res, next) => {
 
   let profile;
   try {
-    const ticket = await new OAuth2Client().verifyIdToken({ idToken: credential, audience: clientId });
-    profile = ticket.getPayload();
+    const idTokenPayload = await new OAuth2Client().verifyIdToken({ idToken: credential, audience: clientId });
+    profile = idTokenPayload.getPayload();
     if (!profile?.sub || !profile.email || profile.email_verified !== true) {
       return res.status(401).json({ error: 'Google sign-in requires a verified Google email address.' });
     }

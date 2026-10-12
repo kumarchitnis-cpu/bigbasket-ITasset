@@ -117,19 +117,6 @@ CREATE TABLE IF NOT EXISTS it_invoices (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS it_tickets (
-  id TEXT PRIMARY KEY,
-  ticket_number TEXT NOT NULL UNIQUE,
-  title TEXT NOT NULL,
-  category TEXT NOT NULL,
-  priority TEXT NOT NULL CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'URGENT')),
-  status TEXT NOT NULL CHECK (status IN ('OPEN', 'IN_PROGRESS', 'WAITING', 'RESOLVED')),
-  assignee TEXT NOT NULL,
-  requester TEXT NOT NULL,
-  due_label TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 CREATE TABLE IF NOT EXISTS it_purchase_requests (
   id TEXT PRIMARY KEY,
   request_number TEXT NOT NULL UNIQUE,
@@ -214,7 +201,6 @@ CREATE TABLE IF NOT EXISTS it_employee_asset_assignments (
   department TEXT NOT NULL,
   asset_model TEXT NOT NULL,
   serial_number TEXT NOT NULL,
-  ticket_no TEXT NOT NULL DEFAULT '',
   doj TEXT NOT NULL,
   remarks TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL REFERENCES users(id),
@@ -292,7 +278,6 @@ CREATE TABLE IF NOT EXISTS sequences (
 CREATE INDEX IF NOT EXISTS it_assets_status_idx ON it_assets(status);
 CREATE INDEX IF NOT EXISTS it_assets_category_idx ON it_assets(category);
 CREATE INDEX IF NOT EXISTS it_invoices_status_idx ON it_invoices(status);
-CREATE INDEX IF NOT EXISTS it_tickets_status_priority_idx ON it_tickets(status, priority);
 CREATE INDEX IF NOT EXISTS it_purchase_requests_status_idx ON it_purchase_requests(status);
 CREATE INDEX IF NOT EXISTS it_vendors_status_idx ON it_vendors(status, legal_name);
 CREATE INDEX IF NOT EXISTS it_asset_events_asset_idx ON it_asset_events(asset_id, created_at DESC);
@@ -323,7 +308,6 @@ export function ensureSchema() {
   if (!invoiceColumns.has('document_id')) {
     db.exec('ALTER TABLE it_invoices ADD COLUMN document_id TEXT');
   }
-  db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('ticket', 2048)").run();
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('purchase_request', 41)").run();
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('goods_receipt', 0)").run();
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('employee_asset_request', 0)").run();

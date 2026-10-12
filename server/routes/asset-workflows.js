@@ -13,11 +13,11 @@ const assignmentFields = [
   ['department', 'Department', 120],
   ['asset_model', 'Asset Model', 160],
   ['serial_number', 'Serial Number', 100],
-  ['ticket_no', 'Ticket No', 80],
   ['doj', 'DoJ', 10],
   ['remarks', 'Remarks', 1000],
 ];
 const assignmentRoles = ['admin', 'it_asset_manager'];
+const assignmentSelect = 'id, employee_name, employee_id, designation, department, asset_model, serial_number, doj, remarks, created_by, created_at, updated_at';
 
 function parseAssignment(body, db, existingId = null) {
   const assignment = {};
@@ -49,8 +49,8 @@ router.get('/employee-assignments', (req, res, next) => {
   try {
     const db = getDb();
     const assignments = assignmentRoles.includes(req.user.role)
-      ? db.prepare('SELECT * FROM it_employee_asset_assignments ORDER BY employee_name COLLATE NOCASE, created_at DESC').all()
-      : db.prepare('SELECT * FROM it_employee_asset_assignments WHERE employee_name = ? COLLATE NOCASE ORDER BY created_at DESC').all(req.user.full_name);
+      ? db.prepare(`SELECT ${assignmentSelect} FROM it_employee_asset_assignments ORDER BY employee_name COLLATE NOCASE, created_at DESC`).all()
+      : db.prepare(`SELECT ${assignmentSelect} FROM it_employee_asset_assignments WHERE employee_name = ? COLLATE NOCASE ORDER BY created_at DESC`).all(req.user.full_name);
     res.json(assignments);
   } catch (error) {
     next(error);
@@ -60,7 +60,7 @@ router.get('/employee-assignments', (req, res, next) => {
 router.get('/employee-assignments/export', requireRole(...assignmentRoles), async (req, res, next) => {
   try {
     const assignments = getDb()
-      .prepare('SELECT employee_name, employee_id, designation, department, asset_model, serial_number, ticket_no, doj, remarks FROM it_employee_asset_assignments ORDER BY employee_name COLLATE NOCASE, created_at DESC')
+      .prepare('SELECT employee_name, employee_id, designation, department, asset_model, serial_number, doj, remarks FROM it_employee_asset_assignments ORDER BY employee_name COLLATE NOCASE, created_at DESC')
       .all();
     const headers = assignmentFields.map(([, label]) => label);
     const keys = assignmentFields.map(([field]) => field);
@@ -74,7 +74,7 @@ router.get('/employee-assignments/export', requireRole(...assignmentRoles), asyn
     headers.forEach((header, index) => {
       sheet.column(String.fromCharCode(65 + index)).width(Math.min(Math.max(header.length + 4, 16), 32));
     });
-    for (const column of ['B', 'G']) sheet.column(column).style('numberFormat', '@');
+    for (const column of ['B', 'F']) sheet.column(column).style('numberFormat', '@');
     if (assignments.length) {
       sheet.range(`A2:${lastColumn}${assignments.length + 1}`).value(
         assignments.map((assignment) => keys.map((key) => assignment[key] ?? '')),
@@ -102,7 +102,7 @@ router.post('/employee-assignments', requireRole(...assignmentRoles), (req, res,
          WHERE id = ?`,
       ).run(...columns.map((field) => parsed.assignment[field]), nowIso(), parsed.duplicate.id);
       audit(req.user.id, 'UPDATE', 'employee_asset_assignment', parsed.duplicate.id, 'SUCCESS', 'Reassigned available asset');
-      return res.json(db.prepare('SELECT * FROM it_employee_asset_assignments WHERE id = ?').get(parsed.duplicate.id));
+      return res.json(db.prepare(`SELECT ${assignmentSelect} FROM it_employee_asset_assignments WHERE id = ?`).get(parsed.duplicate.id));
     }
     const id = newId();
     db.prepare(
@@ -110,7 +110,7 @@ router.post('/employee-assignments', requireRole(...assignmentRoles), (req, res,
        VALUES (?, ${columns.map(() => '?').join(', ')}, ?)`,
     ).run(id, ...columns.map((field) => parsed.assignment[field]), req.user.id);
     audit(req.user.id, 'CREATE', 'employee_asset_assignment', id, 'SUCCESS');
-    res.status(201).json(db.prepare('SELECT * FROM it_employee_asset_assignments WHERE id = ?').get(id));
+    res.status(201).json(db.prepare(`SELECT ${assignmentSelect} FROM it_employee_asset_assignments WHERE id = ?`).get(id));
   } catch (error) {
     next(error);
   }
@@ -131,7 +131,7 @@ router.put('/employee-assignments/:id', requireRole(...assignmentRoles), (req, r
        WHERE id = ?`,
     ).run(...columns.map((field) => parsed.assignment[field]), nowIso(), existing.id);
     audit(req.user.id, 'UPDATE', 'employee_asset_assignment', existing.id, 'SUCCESS');
-    res.json(db.prepare('SELECT * FROM it_employee_asset_assignments WHERE id = ?').get(existing.id));
+    res.json(db.prepare(`SELECT ${assignmentSelect} FROM it_employee_asset_assignments WHERE id = ?`).get(existing.id));
   } catch (error) {
     next(error);
   }

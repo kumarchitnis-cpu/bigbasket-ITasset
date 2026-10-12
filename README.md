@@ -1,6 +1,6 @@
 # bigbasket ITAM
 
-Internal IT asset management workspace for Bigbasket — asset register and lifecycle, employee equipment requests, inventory, warranties, write-offs, procurement, invoices, document OCR, notifications, and service desk. Self-hosted: Node.js API + SQLite.
+Internal IT asset management workspace for Bigbasket — asset register and lifecycle, employee equipment requests, inventory, warranties, write-offs, procurement, invoices, document OCR, and notifications. Self-hosted: Node.js API + SQLite.
 
 ## Stack
 
@@ -57,7 +57,6 @@ The ManageEngine integration status and connection test are available to workspa
 - **Employee asset assignments**: create, update, delete, and Excel export = admin / asset manager; employees can view their own assignments
 - **Write-offs**: request = admin / asset manager; final approve/reject = admin; approval retires the asset and writes an asset event
 - **Inventory receipts**: create/update = admin / asset manager / procurement officer
-- **Tickets**: create = any active user, update = admin / it_asset_manager, delete = admin
 - **Purchase requests**: create = admin / procurement_officer / employee, update = admin / procurement_officer / approver, delete = admin
 - **Vendor onboarding**: create/update = admin / procurement_officer; review = admin / approver; suspend = admin
 - **Documents**: private per-user; admin / finance_officer / auditor can read all
@@ -67,11 +66,11 @@ The ManageEngine integration status and connection test are available to workspa
 ## Production notes
 
 - **Render API deployment**: create a new Blueprint from this repository and use `render.yaml`. It provisions the Express API on Node 22 with a 1 GB persistent disk mounted at `/var/data`; SQLite, uploads, and the cached OCR model are stored there. The blueprint generates `JWT_SECRET`. Set `GOOGLE_CLIENT_ID` and `OPENAI_API_KEY` only if those optional services are configured. After deployment, verify `https://<service>.onrender.com/api/health` returns `{"ok":true,"service":"itam-api"}`. Add the API origin to the frontend's `VITE_API_URL` build setting, and set `VITE_GOOGLE_CLIENT_ID` to the same Google client ID if enabling browser Google sign-in; then rebuild and redeploy the frontend. Persistent-disk plans are required; without the disk, SQLite data, uploaded documents, and the cached OCR model will not survive instance replacement.
-- Record numbers (`TKT-000001…`, `PR-000001…`, `GR-000001…`) are issued by the server from sequences — clients never invent identifiers.
+- Purchase request and goods receipt numbers are issued by the server from sequences — clients never invent identifiers.
 - Asset registration and lifecycle actions write timestamped events with the acting user. Asset managers can assign, return, transfer, quarantine, retire, audit, and record maintenance start/completion from the asset history.
 - Admins and asset managers can bulk-register assets from the Asset register using the downloadable Excel template. Imports validate the complete `.xlsx` file and reject invalid rows or duplicate asset tags before saving any assets.
 - Lifecycle status and custodian changes use the asset event endpoint so they cannot bypass the history record; audit and maintenance updates are committed together with the asset change.
-- Employee asset management includes an employee assignment register (employee ID, designation, department, asset model and serial, ticket, date of joining, and remarks) with admin/asset-manager create, edit, delete, and Excel export. Employee equipment requests retain their separate approval queue and notify asset managers. Write-offs require admin review; approval retires the asset and adds a traceable lifecycle event.
+- Employee asset management includes an employee assignment register (employee ID, designation, department, asset model and serial, date of joining, and remarks) with admin/asset-manager create, edit, delete, and Excel export. Employee equipment requests retain their separate approval queue and notify asset managers. Write-offs require admin review; approval retires the asset and adds a traceable lifecycle event.
 - Vendor onboarding stores supplier contact, tax, address, category, and notes data; submissions remain pending until an admin or approver accepts or rejects them. Procurement officers and admins can manage onboarding, and admins can suspend approved vendors. The Vendors workspace links directly to purchase requests and invoices.
 - Inventory shows available registered assets alongside goods receipt history. Asset registration and Excel imports capture warranty start and end dates; the API validates their format and ordering. Warranty Reports derives active, expiring, expired, and unknown coverage from non-retired registered assets, with manufacturer/status filters, a 12-month forecast, lifecycle-age views, and PDF/Excel/CSV exports. Report rows link to asset history, and the asset register, dashboard, and operations guide link back to warranty reporting. Dell, Lenovo, HP, and Apple assets include a shortcut to the official lookup page that copies the serial number for manual verification; this does not automatically retrieve or save warranty information because the linked consumer portals do not expose a configured API integration.
 - Profile settings update the signed-in user's name and department. Workspace administrators can configure company details, branding, procurement and approval defaults, notification preferences, AP escalation, and priority-based service-level targets; these settings are stored in SQLite. In-app notification preferences control which supported workspace events are generated; email delivery requires an email service. Notifications are per-user, with read state stored in SQLite.

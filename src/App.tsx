@@ -20,7 +20,6 @@ import {
   FileText,
   Laptop,
   LayoutDashboard,
-  LifeBuoy,
   Loader2,
   LogOut,
   Menu,
@@ -34,7 +33,6 @@ import {
   ShieldCheck,
   Sparkles,
   Tag,
-  Ticket,
   Upload,
   Users,
   UserMinus,
@@ -114,19 +112,6 @@ type Invoice = {
   file_visible: boolean;
 };
 
-type Ticket = {
-  id: string;
-  ticket_number: string;
-  title: string;
-  category: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  status: 'OPEN' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED';
-  assignee: string;
-  requester: string;
-  due_label: string;
-  created_at: string;
-};
-
 type PurchaseRequest = {
   id: string;
   request_number: string;
@@ -176,7 +161,6 @@ type EmployeeAssetAssignment = {
   department: string;
   asset_model: string;
   serial_number: string;
-  ticket_no: string;
   doj: string;
   remarks: string;
 };
@@ -243,7 +227,7 @@ const workspaceRoles = [
 
 const invoiceStatuses: Invoice['status'][] = ['PENDING', 'UNDER_REVIEW', 'PROCESSED', 'ON_HOLD', 'REJECTED'];
 
-type Tab = 'Overview' | 'Assets' | 'Procurement' | 'Vendors' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'Service desk' | 'User Management';
+type Tab = 'Overview' | 'Assets' | 'Procurement' | 'Vendors' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'User Management';
 
 const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
   { label: 'Overview', icon: LayoutDashboard },
@@ -259,7 +243,6 @@ const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
   { label: 'Notifications', icon: Bell },
   { label: 'Settings', icon: Settings2 },
   { label: 'User Management', icon: Users },
-  { label: 'Service desk', icon: LifeBuoy },
 ];
 
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -320,7 +303,6 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [employeeRequests, setEmployeeRequests] = useState<EmployeeAssetRequest[]>([]);
@@ -386,10 +368,9 @@ function App() {
     setError(null);
     try {
       const canViewVendors = ['admin', 'procurement_officer', 'approver'].includes(user?.role ?? '');
-      const [assetData, invoiceData, ticketData, requestData, vendorData, employeeRequestData, writeOffData, receiptData, notificationData, dashboardData] = await Promise.all([
+      const [assetData, invoiceData, requestData, vendorData, employeeRequestData, writeOffData, receiptData, notificationData, dashboardData] = await Promise.all([
         api.get<Asset[]>('/api/assets'),
         api.get<Invoice[]>('/api/invoices'),
-        api.get<Ticket[]>('/api/tickets'),
         api.get<PurchaseRequest[]>('/api/purchase-requests'),
         canViewVendors ? api.get<Vendor[]>('/api/vendors') : Promise.resolve([]),
         api.get<EmployeeAssetRequest[]>('/api/workflows/employee-requests'),
@@ -400,7 +381,6 @@ function App() {
       ]);
       setAssets(assetData);
       setInvoices(invoiceData);
-      setTickets(ticketData);
       setPurchaseRequests(requestData);
       setVendors(vendorData);
       setEmployeeRequests(employeeRequestData);
@@ -433,12 +413,6 @@ function App() {
     return assets.filter((asset) => [asset.asset_tag, asset.category, asset.manufacturer, asset.model, asset.serial_number, asset.custodian, asset.department].some((value) => value.toLowerCase().includes(normalized)));
   }, [assets, query]);
 
-  const filteredTickets = useMemo(() => {
-    const normalized = query.toLowerCase().trim();
-    if (!normalized) return tickets;
-    return tickets.filter((ticket) => [ticket.ticket_number, ticket.title, ticket.category, ticket.requester, ticket.assignee].some((value) => value.toLowerCase().includes(normalized)));
-  }, [tickets, query]);
-
   const metrics = useMemo(() => {
     const endOfYear = new Date(new Date().getFullYear(), 11, 31);
     const warrantyCount = assets.filter((asset) => asset.warranty_end && new Date(asset.warranty_end) <= endOfYear).length;
@@ -449,11 +423,10 @@ function App() {
       maintenance: assets.filter((asset) => asset.status === 'UNDER_MAINTENANCE').length,
       warranty: warrantyCount,
       approvals: purchaseRequests.filter((request) => request.status === 'PENDING_APPROVAL').length,
-      openTickets: tickets.filter((ticket) => ticket.status !== 'RESOLVED').length,
       invoiceExceptions: invoices.filter((invoice) => invoice.status === 'UNDER_REVIEW' || invoice.status === 'ON_HOLD').length,
       unreadNotifications: notifications.filter((notification) => !notification.read_at).length,
     };
-  }, [assets, invoices, notifications, purchaseRequests, tickets]);
+  }, [assets, invoices, notifications, purchaseRequests]);
 
   const searchResults = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -470,14 +443,8 @@ function App() {
         results.push({ id: `invoice-${invoice.id}`, title: invoice.invoice_number, detail: `${invoice.vendor} · ${invoice.purchase_order || 'No PO'}`, tab: 'Invoices', icon: FileText });
       }
     }
-    for (const ticket of tickets) {
-      if ([ticket.ticket_number, ticket.title, ticket.category, ticket.requester, ticket.assignee]
-        .some((value) => value.toLowerCase().includes(term))) {
-        results.push({ id: `ticket-${ticket.id}`, title: `${ticket.ticket_number} · ${ticket.title}`, detail: `${ticket.category} · ${ticket.status.toLowerCase().replace(/_/g, ' ')}`, tab: 'Service desk', icon: Ticket });
-      }
-    }
     return results.slice(0, 8);
-  }, [assets, invoices, query, tickets]);
+  }, [assets, invoices, query]);
 
   const showTab = (tab: Tab) => {
     setActiveTab(tab);
@@ -507,11 +474,11 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><button className="navigation-menu-button" aria-label="Open navigation menu" aria-controls="workspace-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}><Menu size={21} /><span>Menu</span></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI"><Sparkles size={16} /><span>Ask, navigate, or implement…</span><kbd>AI</kbd></button><div className="global-search-wrap" ref={searchBoxRef}><div className={`global-search ${searchOpen ? 'search-active' : ''}`}><button type="button" className="search-trigger" aria-label="Open workspace search" onClick={() => setSearchOpen(true)}><Search size={17} /></button><input ref={searchInputRef} value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && searchResults[0]) { showTab(searchResults[0].tab); setSearchOpen(false); } }} placeholder="Search assets, invoices, tickets..." aria-label="Search workspace" aria-expanded={searchOpen} aria-controls="workspace-search-results" /><kbd>Ctrl K</kbd>{query && <button className="search-clear" aria-label="Clear search" onClick={() => { setQuery(''); setSearchOpen(true); searchInputRef.current?.focus(); }}><X size={14} /></button>}</div>{searchOpen && query.trim() && <div className="search-results" id="workspace-search-results" role="listbox" aria-label="Workspace search results">{searchResults.map(({ id, title, detail, tab, icon: Icon }) => <button key={id} role="option" aria-selected="false" onClick={() => { setQuery(query.trim()); showTab(tab); setSearchOpen(false); }}><span className="search-result-icon"><Icon size={15} /></span><span className="search-result-copy"><strong>{title}</strong><small>{detail}</small></span><span className="search-result-type">{tab}</span></button>)}{searchResults.length === 0 && <div className="search-no-results">No matching assets, invoices, or tickets.</div>}</div>}</div><button className="icon-button notification-button" aria-label="Notifications" onClick={() => showTab('Notifications')}><Bell size={19} />{metrics.unreadNotifications > 0 && <span></span>}</button><div className="user-menu-wrap" ref={userMenuRef}><button className="user-menu-trigger" aria-label={`User menu for ${user.full_name}`} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}><span className="avatar avatar-light">{initials(user.full_name)}</span><ChevronDown size={13} /></button>{userMenuOpen && <div className="user-menu-popover"><div className="user-menu-heading"><strong>{user.full_name}</strong><span>{user.email}</span><small>{roleLabel(user.role)}</small></div><button onClick={() => { setUserMenuOpen(false); showTab('Settings'); }}><Settings2 size={15} /> Account settings</button>{user.role === 'admin' && <button onClick={() => { setUserMenuOpen(false); showTab('User Management'); }}><Users size={15} /> User management</button>}<button className="user-menu-signout" onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header>
+        <header className="topbar"><button className="navigation-menu-button" aria-label="Open navigation menu" aria-controls="workspace-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}><Menu size={21} /><span>Menu</span></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI"><Sparkles size={16} /><span>Ask, navigate, or implement…</span><kbd>AI</kbd></button><div className="global-search-wrap" ref={searchBoxRef}><div className={`global-search ${searchOpen ? 'search-active' : ''}`}><button type="button" className="search-trigger" aria-label="Open workspace search" onClick={() => setSearchOpen(true)}><Search size={17} /></button><input ref={searchInputRef} value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && searchResults[0]) { showTab(searchResults[0].tab); setSearchOpen(false); } }} placeholder="Search assets and invoices..." aria-label="Search workspace" aria-expanded={searchOpen} aria-controls="workspace-search-results" /><kbd>Ctrl K</kbd>{query && <button className="search-clear" aria-label="Clear search" onClick={() => { setQuery(''); setSearchOpen(true); searchInputRef.current?.focus(); }}><X size={14} /></button>}</div>{searchOpen && query.trim() && <div className="search-results" id="workspace-search-results" role="listbox" aria-label="Workspace search results">{searchResults.map(({ id, title, detail, tab, icon: Icon }) => <button key={id} role="option" aria-selected="false" onClick={() => { setQuery(query.trim()); showTab(tab); setSearchOpen(false); }}><span className="search-result-icon"><Icon size={15} /></span><span className="search-result-copy"><strong>{title}</strong><small>{detail}</small></span><span className="search-result-type">{tab}</span></button>)}{searchResults.length === 0 && <div className="search-no-results">No matching assets or invoices.</div>}</div>}</div><button className="icon-button notification-button" aria-label="Notifications" onClick={() => showTab('Notifications')}><Bell size={19} />{metrics.unreadNotifications > 0 && <span></span>}</button><div className="user-menu-wrap" ref={userMenuRef}><button className="user-menu-trigger" aria-label={`User menu for ${user.full_name}`} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}><span className="avatar avatar-light">{initials(user.full_name)}</span><ChevronDown size={13} /></button>{userMenuOpen && <div className="user-menu-popover"><div className="user-menu-heading"><strong>{user.full_name}</strong><span>{user.email}</span><small>{roleLabel(user.role)}</small></div><button onClick={() => { setUserMenuOpen(false); showTab('Settings'); }}><Settings2 size={15} /> Account settings</button>{user.role === 'admin' && <button onClick={() => { setUserMenuOpen(false); showTab('User Management'); }}><Users size={15} /> User management</button>}<button className="user-menu-signout" onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header>
 
         <div className="page-content">
           {activeTab === 'Settings' ? <SettingsView user={user} onSaved={setUser} /> : loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
-            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} tickets={tickets} requests={purchaseRequests} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenServiceDesk={() => showTab('Service desk')} onOpenWarranties={() => showTab('Warranties')} />}
+            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} requests={purchaseRequests} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenProcurement={() => showTab('Procurement')} onOpenEmployeeRequests={() => showTab('Emp Asset Mgmt')} onOpenWarranties={() => showTab('Warranties')} />}
             {activeTab === 'Assets' && <AssetsView assets={filteredAssets} user={user} onAdd={() => setAssetModalOpen(true)} onRefresh={() => void loadData(true)} onImportComplete={async () => { setQuery(''); setRefreshing(true); try { setAssets(await api.get<Asset[]>('/api/assets')); } finally { setRefreshing(false); } }} query={query} openAssetId={pendingAssetId} onAssetOpened={() => setPendingAssetId(null)} onOpenWarranties={() => showTab('Warranties')} />}
             {activeTab === 'Procurement' && <ProcurementView requests={purchaseRequests} userName={user.full_name} department={user.department} onSaved={() => void loadData(true)} />}
             {activeTab === 'Vendors' && <VendorsView vendors={vendors} invoices={invoices} user={user} onSaved={() => void loadData(true)} onOpenProcurement={() => showTab('Procurement')} onOpenInvoices={() => showTab('Invoices')} />}
@@ -523,7 +490,6 @@ function App() {
             {activeTab === 'Notifications' && <NotificationsView notifications={notifications} onRead={async (id) => { await api.put(`/api/notifications/${id}/read`, {}); setNotifications((current) => current.map((notification) => notification.id === id ? { ...notification, read_at: new Date().toISOString() } : notification)); }} />}
             {activeTab === 'User Management' && user.role === 'admin' && <UserManagementView currentUser={user} />}
             {activeTab === 'AI Assistant' && <AssistantView onNavigate={showTab} />}
-            {activeTab === 'Service desk' && <ServiceDeskView tickets={filteredTickets} userName={user.full_name} onSaved={() => void loadData(true)} />}
           </>}
         </div>
       </main>
@@ -533,10 +499,9 @@ function App() {
   );
 }
 
-function Overview({ assets, invoices, tickets, requests, employeeRequests, activity, onOpenAsset, onOpenAssets, onOpenInvoices, onOpenProcurement, onOpenServiceDesk, onOpenWarranties }: {
+function Overview({ assets, invoices, requests, employeeRequests, activity, onOpenAsset, onOpenAssets, onOpenInvoices, onOpenProcurement, onOpenEmployeeRequests, onOpenWarranties }: {
   assets: Asset[];
   invoices: Invoice[];
-  tickets: Ticket[];
   requests: PurchaseRequest[];
   employeeRequests: EmployeeAssetRequest[];
   activity: DashboardData;
@@ -544,39 +509,27 @@ function Overview({ assets, invoices, tickets, requests, employeeRequests, activ
   onOpenAssets: () => void;
   onOpenInvoices: () => void;
   onOpenProcurement: () => void;
-  onOpenServiceDesk: () => void;
+  onOpenEmployeeRequests: () => void;
   onOpenWarranties: () => void;
 }) {
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
   const activeAssets = assets.filter((asset) => asset.status !== 'RETIRED').length;
   const orderedRequests = requests.filter((request) => request.status === 'ORDERED').length;
-  const openTickets = tickets.filter((ticket) => ticket.status !== 'RESOLVED').length;
   const requestStatuses = [
     { label: 'Awaiting approval', value: requests.filter((request) => request.status === 'PENDING_APPROVAL').length, color: 'amber' },
     { label: 'Approved', value: requests.filter((request) => request.status === 'APPROVED').length, color: 'teal' },
     { label: 'Ordered', value: orderedRequests, color: 'blue' },
     { label: 'Returned', value: requests.filter((request) => request.status === 'RETURNED').length, color: 'gray' },
   ];
-  const ticketStatuses = [
-    { label: 'Open', value: tickets.filter((ticket) => ticket.status === 'OPEN').length, color: 'blue' },
-    { label: 'In progress', value: tickets.filter((ticket) => ticket.status === 'IN_PROGRESS').length, color: 'teal' },
-    { label: 'Waiting', value: tickets.filter((ticket) => ticket.status === 'WAITING').length, color: 'amber' },
-    { label: 'Resolved', value: tickets.filter((ticket) => ticket.status === 'RESOLVED').length, color: 'gray' },
+  const employeeRequestStatuses = [
+    { label: 'Awaiting approval', value: employeeRequests.filter((request) => request.status === 'PENDING_APPROVAL').length, color: 'amber' },
+    { label: 'Approved', value: employeeRequests.filter((request) => request.status === 'APPROVED').length, color: 'teal' },
+    { label: 'Rejected', value: employeeRequests.filter((request) => request.status === 'REJECTED').length, color: 'gray' },
   ];
-  const priorityItems = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((priority) => ({
-    label: priority === 'URGENT' ? 'Critical' : priority[0] + priority.slice(1).toLowerCase(),
-    value: tickets.filter((ticket) => ticket.priority === priority).length,
-    color: priority.toLowerCase(),
-  }));
   const departmentItems = Array.from(new Set(requests.map((request) => request.department)))
     .map((department) => ({ label: department, value: requests.filter((request) => request.department === department).length, color: 'blue' }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
-  const ticketCategoryItems = Array.from(new Set(tickets.map((ticket) => ticket.category)))
-    .map((category) => ({ label: category, value: tickets.filter((ticket) => ticket.category === category).length, color: 'teal' }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5);
-  const ticketTrend = makeDailySeries(tickets.map((ticket) => ticket.created_at));
   const activityTrend = makeDailySeries(activity.daily.map((item) => item.date), activity.daily);
 
   return <div className="fade-in operations-dashboard">
@@ -590,23 +543,19 @@ function Overview({ assets, invoices, tickets, requests, employeeRequests, activ
       <MetricCard label="Active assets" value={activeAssets.toLocaleString()} note={`${assets.length - activeAssets} retired`} icon={BriefcaseBusiness} tone="teal" />
       <MetricCard label="Purchase orders" value={orderedRequests.toLocaleString()} note={`${requests.length} purchase requests`} icon={ClipboardList} tone="amber" />
       <MetricCard label="Invoice records" value={invoices.length.toLocaleString()} note="Tracked in invoice register" icon={FileText} tone="blue" />
-      <MetricCard label="Open tickets" value={openTickets.toLocaleString()} note={`${tickets.length} total tickets`} icon={Ticket} tone="red" />
     </div>
 
     <div className="dashboard-reference-grid dashboard-overview-grid">
       <section className="panel dashboard-panel"><PanelHeader title="Purchase Requests by Status" action="View procurement" onAction={onOpenProcurement} /><DashboardBarList items={requestStatuses} emptyLabel="No purchase requests yet." /></section>
-      <section className="panel dashboard-panel"><PanelHeader title="Ticket Overview" action="Open service desk" onAction={onOpenServiceDesk} /><DashboardStatusGrid items={ticketStatuses} footer={`${employeeRequests.length} asset allocation request${employeeRequests.length === 1 ? '' : 's'}`} /></section>
+      <section className="panel dashboard-panel"><PanelHeader title="Employee Asset Requests" action="View requests" onAction={onOpenEmployeeRequests} /><DashboardStatusGrid items={employeeRequestStatuses} footer={`${employeeRequests.length} equipment request${employeeRequests.length === 1 ? '' : 's'}`} /></section>
     </div>
 
     <div className="dashboard-reference-grid dashboard-chart-grid">
-      <section className="panel dashboard-panel"><PanelHeader title="Ticket Trend" subtitle="Tickets created over the last 30 days" /><DashboardTrend values={ticketTrend} color="blue" /></section>
       <section className="panel dashboard-panel"><PanelHeader title="Activity Trend" subtitle="Successful workspace actions over the last 30 days" /><DashboardTrend values={activityTrend} color="teal" /></section>
     </div>
 
     <div className="dashboard-reference-grid dashboard-breakdown-grid">
-      <section className="panel dashboard-panel"><PanelHeader title="Tickets by Priority" action="View tickets" onAction={onOpenServiceDesk} /><DashboardBarList items={priorityItems} emptyLabel="No tickets yet." /></section>
       <section className="panel dashboard-panel"><PanelHeader title="Requests by Department" action="View procurement" onAction={onOpenProcurement} /><DashboardBarList items={departmentItems} emptyLabel="No purchase requests yet." /></section>
-      <section className="panel dashboard-panel"><PanelHeader title="Tickets by Type" action="View tickets" onAction={onOpenServiceDesk} /><DashboardBarList items={ticketCategoryItems} emptyLabel="No tickets yet." /></section>
     </div>
 
     <div className="dashboard-reference-grid dashboard-recent-grid">
@@ -684,6 +633,25 @@ function AssetsView({ assets, user, onAdd, onRefresh, onImportComplete, query, o
     RETIRED: assets.filter((asset) => asset.status === 'RETIRED').length,
   }), [assets]);
   const visibleAssets = statusFilter === 'ALL' ? assets : assets.filter((asset) => asset.status === statusFilter);
+  const downloadReport = () => {
+    const headers = ['Asset Tag', 'Category', 'Manufacturer', 'Model', 'Serial Number', 'Status', 'Condition', 'Custodian', 'Location', 'Department', 'Purchase Cost', 'Warranty Start', 'Warranty End'];
+    const rows = visibleAssets.map((asset) => [
+      asset.asset_tag, asset.category, asset.manufacturer, asset.model, asset.serial_number, asset.status,
+      asset.condition, asset.custodian, asset.location, asset.department, String(asset.purchase_cost),
+      asset.warranty_start || '', asset.warranty_end || '',
+    ]);
+    const escapeCell = (value: string) => {
+      const safeValue = /^[=+\-@]/.test(value) ? `'${value}` : value;
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    };
+    const csv = [headers, ...rows].map((row) => row.map(escapeCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'asset-register-report.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
   const pills: { key: typeof statusFilter; label: string }[] = [
     { key: 'ALL', label: 'All assets' },
     { key: 'ASSIGNED', label: 'Assigned' },
@@ -692,7 +660,7 @@ function AssetsView({ assets, user, onAdd, onRefresh, onImportComplete, query, o
     { key: 'QUARANTINED', label: 'Quarantined' },
     { key: 'RETIRED', label: 'Retired' },
   ];
-  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div><div className="heading-actions"><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report</button>{canManage && <><button className="button button-secondary" onClick={() => setUploadOpen(true)}><Upload size={16} /> Upload Excel</button><button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button></>}</div></div><div className="subnav-row"><div className="tab-pills">{pills.map(({ key, label }) => <button key={key} className={statusFilter === key ? 'selected' : ''} onClick={() => setStatusFilter(key)}>{label} <span>{counts[key]}</span></button>)}</div><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} onOpenWarranties={onOpenWarranties} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}{uploadOpen && <AssetImportModal onClose={() => setUploadOpen(false)} onSaved={async () => { setStatusFilter('ALL'); await onImportComplete(); }} />}</div>;
+  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div><div className="heading-actions"><button className="button button-secondary" onClick={downloadReport}><Download size={16} /> Download Report</button><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report</button>{canManage && <><button className="button button-secondary" onClick={() => setUploadOpen(true)}><Upload size={16} /> Upload Excel</button><button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button></>}</div></div><div className="subnav-row"><div className="tab-pills">{pills.map(({ key, label }) => <button key={key} className={statusFilter === key ? 'selected' : ''} onClick={() => setStatusFilter(key)}>{label} <span>{counts[key]}</span></button>)}</div><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} onOpenWarranties={onOpenWarranties} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}{uploadOpen && <AssetImportModal onClose={() => setUploadOpen(false)} onSaved={async () => { setStatusFilter('ALL'); await onImportComplete(); }} />}</div>;
 }
 
 function AssetImportModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
@@ -957,11 +925,6 @@ function InvoicesView({ invoices, vendors, user, query, onSaved }: { invoices: I
   </div>;
 }
 
-function ServiceDeskView({ tickets, userName, onSaved }: { tickets: Ticket[]; userName: string; onSaved: () => void }) {
-  const [ticketModalOpen, setTicketModalOpen] = useState(false);
-  return <div className="fade-in"><PageTitle eyebrow="Operations / Support" title="Service desk" copy="Keep requests, incidents, and SLA commitments moving forward." action="Create ticket" icon={Plus} onAction={() => setTicketModalOpen(true)} /><div className="stat-strip"><MiniStat label="Open tickets" value={tickets.filter((ticket) => ticket.status === 'OPEN').length.toString()} tone="blue" /><MiniStat label="SLA at risk" value={tickets.filter((ticket) => ticket.priority === 'URGENT' || ticket.priority === 'HIGH').length.toString()} tone="red" /><MiniStat label="Resolved" value={tickets.filter((ticket) => ticket.status === 'RESOLVED').length.toString()} tone="teal" /></div><section className="panel table-panel full-panel"><PanelHeader title="Active work" subtitle="Incidents and requests assigned to your team" action="Filter" /><div className="ticket-list">{tickets.map((ticket) => <div className="ticket-row" key={ticket.id}><div className={`priority-bar ${ticket.priority.toLowerCase()}`}></div><div className="ticket-main"><div><span className="ticket-number">{ticket.ticket_number}</span><strong>{ticket.title}</strong></div><span>{ticket.category} · Requested by {ticket.requester}</span></div><PriorityBadge priority={ticket.priority} /><StatusBadge status={ticket.status} /><div className="ticket-assignee"><div className="avatar avatar-small">{initials(ticket.assignee)}</div><span>{ticket.assignee}</span></div><div className="ticket-due"><span>{ticket.status === 'RESOLVED' ? 'Completed' : 'SLA'}</span><strong>{ticket.due_label}</strong></div></div>)}</div>{tickets.length === 0 && <EmptyState text="No tickets in the queue. Create a ticket to report an issue or request." />}</section>{ticketModalOpen && <TicketModal userName={userName} onClose={() => setTicketModalOpen(false)} onSaved={() => { setTicketModalOpen(false); onSaved(); }} />}</div>;
-}
-
 function EmployeeAssetsView({ requests, assets, user, onSaved }: { requests: EmployeeAssetRequest[]; assets: Asset[]; user: AppUser; onSaved: () => void }) {
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
@@ -977,7 +940,7 @@ function EmployeeAssetsView({ requests, assets, user, onSaved }: { requests: Emp
   const [reviewError, setReviewError] = useState<string | null>(null);
   const canReview = user.role === 'admin' || user.role === 'it_asset_manager';
   const visibleAssignments = assignments.filter((assignment) =>
-    [assignment.employee_name, assignment.employee_id, assignment.designation, assignment.department, assignment.asset_model, assignment.serial_number, assignment.ticket_no, assignment.remarks]
+    [assignment.employee_name, assignment.employee_id, assignment.designation, assignment.department, assignment.asset_model, assignment.serial_number, assignment.remarks]
       .some((value) => value.toLowerCase().includes(assignmentSearch.trim().toLowerCase())),
   );
   const loadAssignments = useCallback(async () => {
@@ -1039,7 +1002,7 @@ function EmployeeAssetsView({ requests, assets, user, onSaved }: { requests: Emp
     {canReview && <section className="panel table-panel full-panel employee-assignment-panel">
       <div className="employee-assignment-toolbar"><div><h2>Employee asset assignments</h2><p>Assigned equipment by employee</p></div><label className="employee-assignment-search"><Search size={15} /><input value={assignmentSearch} onChange={(event) => setAssignmentSearch(event.target.value)} placeholder="Search employee, asset, or serial number" aria-label="Search employee asset assignments" /></label></div>
       {assignmentsError && <div className="auth-message module-error employee-assignment-error" role="alert">{assignmentsError}<button type="button" className="text-button" onClick={() => void loadAssignments()}>Retry</button></div>}
-      {assignmentsLoading ? <div className="history-state"><Loader2 size={17} className="spin" /> Loading employee assignments</div> : assignmentsError ? null : visibleAssignments.length === 0 ? <EmptyState text={assignments.length ? 'No assignments match your search.' : 'No employee asset assignments have been recorded yet.'} /> : <div className="data-table-wrap employee-assignment-table-wrap"><table className="data-table employee-assignment-table"><thead><tr><th>Employee Name</th><th>Employee ID</th><th>Designation</th><th>Department</th><th>Asset Model</th><th>Serial Number</th><th>Ticket No</th><th>DoJ</th><th>Remarks</th><th>Actions</th></tr></thead><tbody>{visibleAssignments.map((assignment) => <tr key={assignment.id}><td><button type="button" className="record-link" onClick={() => setSelectedEmployee(assignment)}>{assignment.employee_name}</button></td><td>{assignment.employee_id}</td><td>{assignment.designation}</td><td>{assignment.department}</td><td>{assignment.asset_model}</td><td><button type="button" className="employee-serial-number" onClick={() => setSelectedAssignment(assignment)} aria-label={`View asset and assignment details for serial number ${assignment.serial_number}`}>{assignment.serial_number}</button></td><td>{assignment.ticket_no || '—'}</td><td>{formatDate(assignment.doj)}</td><td>{assignment.remarks || '—'}</td><td><div className="employee-assignment-actions"><button type="button" className="button button-secondary" disabled={assignmentBusy === assignment.id} onClick={() => { setEditingAssignment(assignment); setAssignmentModalOpen(true); }}><Pencil size={13} /> Edit</button><button type="button" className="button employee-assignment-delete" disabled={assignmentBusy === assignment.id} onClick={() => void deleteAssignment(assignment)}>{assignmentBusy === assignment.id ? <Loader2 size={13} className="spin" /> : <XCircle size={13} />} Delete</button></div></td></tr>)}</tbody></table></div>}
+      {assignmentsLoading ? <div className="history-state"><Loader2 size={17} className="spin" /> Loading employee assignments</div> : assignmentsError ? null : visibleAssignments.length === 0 ? <EmptyState text={assignments.length ? 'No assignments match your search.' : 'No employee asset assignments have been recorded yet.'} /> : <div className="data-table-wrap employee-assignment-table-wrap"><table className="data-table employee-assignment-table"><thead><tr><th>Employee Name</th><th>Employee ID</th><th>Designation</th><th>Department</th><th>Asset Model</th><th>Serial Number</th><th>DoJ</th><th>Remarks</th><th>Actions</th></tr></thead><tbody>{visibleAssignments.map((assignment) => <tr key={assignment.id}><td><button type="button" className="record-link" onClick={() => setSelectedEmployee(assignment)}>{assignment.employee_name}</button></td><td>{assignment.employee_id}</td><td>{assignment.designation}</td><td>{assignment.department}</td><td>{assignment.asset_model}</td><td><button type="button" className="employee-serial-number" onClick={() => setSelectedAssignment(assignment)} aria-label={`View asset and assignment details for serial number ${assignment.serial_number}`}>{assignment.serial_number}</button></td><td>{formatDate(assignment.doj)}</td><td>{assignment.remarks || '—'}</td><td><div className="employee-assignment-actions"><button type="button" className="button button-secondary" disabled={assignmentBusy === assignment.id} onClick={() => { setEditingAssignment(assignment); setAssignmentModalOpen(true); }}><Pencil size={13} /> Edit</button><button type="button" className="button employee-assignment-delete" disabled={assignmentBusy === assignment.id} onClick={() => void deleteAssignment(assignment)}>{assignmentBusy === assignment.id ? <Loader2 size={13} className="spin" /> : <XCircle size={13} />} Delete</button></div></td></tr>)}</tbody></table></div>}
     </section>}
     <div className="stat-strip employee-request-stats"><MiniStat label="Pending review" value={requests.filter((request) => request.status === 'PENDING_APPROVAL').length.toString()} tone="amber" /><MiniStat label="Approved" value={requests.filter((request) => request.status === 'APPROVED').length.toString()} tone="teal" /><MiniStat label="Requests shown" value={requests.length.toString()} tone="blue" /></div>
     {reviewError && <div className="auth-message module-error">{reviewError}</div>}
@@ -1059,7 +1022,7 @@ function EmployeeProfileDialog({ assignment, assignments, onClose, onOpenAsset }
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card record-details-card" role="dialog" aria-modal="true" aria-labelledby="employee-profile-title">
     <div className="modal-header"><div><p className="eyebrow">Employee profile</p><h2 id="employee-profile-title">{assignment.employee_name}</h2><span className="asset-modal-model">{assignment.employee_id}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close employee details"><X size={18} /></button></div>
     <div className="asset-detail-grid"><div><span>Designation</span><strong>{assignment.designation || 'Not recorded'}</strong></div><div><span>Department</span><strong>{assignment.department || 'Not recorded'}</strong></div><div><span>Date of joining</span><strong>{assignment.doj ? formatDate(assignment.doj) : 'Not recorded'}</strong></div></div>
-    <section className="record-details-section"><h3>Assigned equipment</h3>{assignments.length ? <div className="record-related-list">{assignments.map((item) => <button type="button" className="record-related-row" key={item.id} onClick={() => onOpenAsset(item)}><span><strong>{item.serial_number}</strong><small>{item.asset_model} · {item.ticket_no || 'No ticket'}</small></span><ArrowUpRight size={15} /></button>)}</div> : <span className="invoice-detail-empty">No equipment assignments are recorded.</span>}</section>
+    <section className="record-details-section"><h3>Assigned equipment</h3>{assignments.length ? <div className="record-related-list">{assignments.map((item) => <button type="button" className="record-related-row" key={item.id} onClick={() => onOpenAsset(item)}><span><strong>{item.serial_number}</strong><small>{item.asset_model}</small></span><ArrowUpRight size={15} /></button>)}</div> : <span className="invoice-detail-empty">No equipment assignments are recorded.</span>}</section>
     <div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Close</button></div>
   </div></div>;
 }
@@ -1070,7 +1033,7 @@ function EmployeeAssetDetailsDialog({ assignment, asset, onClose }: { assignment
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card employee-asset-details-card" role="dialog" aria-modal="true" aria-labelledby="employee-asset-details-title">
     <div className="modal-header"><div><p className="eyebrow">Employee asset details</p><h2 id="employee-asset-details-title">{assignment.serial_number}</h2><span className="asset-modal-model">{assignment.asset_model}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close asset details"><X size={18} /></button></div>
     <section className="employee-asset-details-section"><h3>Asset details</h3>{asset ? <div className="asset-detail-grid"><div><span>Asset tag</span><strong>{asset.asset_tag}</strong></div><div><span>Category</span><strong>{asset.category}</strong></div><div><span>Manufacturer</span><strong>{asset.manufacturer}</strong></div><div><span>Model</span><strong>{asset.model}</strong></div><div><span>Serial number</span><strong>{asset.serial_number}</strong></div><div><span>Condition</span><strong>{asset.condition}</strong></div><div><span>Location</span><strong>{asset.location}</strong></div><div><span>Asset status</span><StatusBadge status={asset.status} /></div></div> : <div className="auth-message" role="status">Asset details are not available for this serial number.</div>}</section>
-    <section className="employee-asset-details-section"><h3>Assigned user</h3><div className="asset-detail-grid"><div><span>Name</span><strong>{assignment.employee_name}</strong></div><div><span>Employee ID</span><strong>{assignment.employee_id}</strong></div><div><span>Designation</span><strong>{assignment.designation || 'Not recorded'}</strong></div><div><span>Department</span><strong>{assignment.department || 'Not recorded'}</strong></div><div><span>Ticket number</span><strong>{assignment.ticket_no || 'Not recorded'}</strong></div><div><span>Date of joining</span><strong>{assignment.doj ? formatDate(assignment.doj) : 'Not recorded'}</strong></div><div className="employee-asset-detail-wide"><span>Remarks</span><strong>{assignment.remarks || 'None'}</strong></div></div></section>
+    <section className="employee-asset-details-section"><h3>Assigned user</h3><div className="asset-detail-grid"><div><span>Name</span><strong>{assignment.employee_name}</strong></div><div><span>Employee ID</span><strong>{assignment.employee_id}</strong></div><div><span>Designation</span><strong>{assignment.designation || 'Not recorded'}</strong></div><div><span>Department</span><strong>{assignment.department || 'Not recorded'}</strong></div><div><span>Date of joining</span><strong>{assignment.doj ? formatDate(assignment.doj) : 'Not recorded'}</strong></div><div className="employee-asset-detail-wide"><span>Remarks</span><strong>{assignment.remarks || 'None'}</strong></div></div></section>
     <section className="employee-asset-details-section"><h3>Warranty details</h3>{asset ? <div className="asset-detail-grid"><div><span>Warranty start</span><strong>{asset.warranty_start ? formatDate(asset.warranty_start) : 'Not recorded'}</strong></div><div><span>Warranty end</span><strong>{asset.warranty_end ? formatDate(asset.warranty_end) : 'Not recorded'}</strong></div><div><span>Coverage status</span><StatusBadge status={coverageLabel} /></div></div> : <div className="asset-detail-grid"><div><span>Coverage status</span><StatusBadge status="UNKNOWN" /></div></div>}</section>
     <div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Close</button></div>
   </div></div>;
@@ -1090,7 +1053,6 @@ function EmployeeAssetAssignmentModal({ assignment, assets, assignments, onClose
     asset_type: currentAsset?.category ?? '',
     asset_model: currentAsset?.model ?? assignment?.asset_model ?? '',
     serial_number: assignment?.serial_number ?? '',
-    ticket_no: assignment?.ticket_no ?? '',
     doj: assignment?.doj ?? '',
     remarks: assignment?.remarks ?? '',
   });
@@ -1116,7 +1078,6 @@ function EmployeeAssetAssignmentModal({ assignment, assets, assignments, onClose
         department: form.department,
         asset_model: form.asset_model,
         serial_number: form.serial_number,
-        ticket_no: form.ticket_no,
         doj: form.doj,
         remarks: form.remarks,
       };
@@ -1135,7 +1096,6 @@ function EmployeeAssetAssignmentModal({ assignment, assets, assignments, onClose
     { key: 'employee_id', label: 'Employee ID', required: true },
     { key: 'designation', label: 'Designation' },
     { key: 'department', label: 'Department' },
-    { key: 'ticket_no', label: 'Ticket No' },
     { key: 'doj', label: 'Date of Joining', type: 'date' },
   ];
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><form className="modal-card employee-assignment-modal" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Employee services / Equipment</p><h2>{assignment ? 'Edit Employee Asset' : 'New Employee Asset'}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close assignment form" disabled={busy}><X size={18} /></button></div><div className="form-grid employee-assignment-form">{fields.slice(0, 4).map(({ key, label, required, type }) => <label key={key}>{label}{required && ' *'}<input required={required} type={type ?? 'text'} value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}<label className="span-2">Asset Type<select value={form.asset_type} onChange={(event) => { setForm((current) => ({ ...current, asset_type: event.target.value, serial_number: '', asset_model: '' })); setSerialMissing(false); setError(null); }}><option value="">All asset types</option>{assetTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label><label className="span-2">Serial Number *<select required value={form.serial_number} aria-invalid={serialMissing && !form.serial_number} aria-describedby="assignment-serial-hint" onChange={(event) => { const selected = assetsForType.find((asset) => asset.serial_number === event.target.value); setForm((current) => ({ ...current, serial_number: event.target.value, asset_model: selected?.model ?? '' })); setSerialMissing(false); setError(null); }}><option value="">Select a serial number</option>{assetsForType.map((asset) => <option key={asset.id} value={asset.serial_number}>{asset.serial_number} · {asset.manufacturer} {asset.model}{assignments.some((item) => item.serial_number === asset.serial_number && item.id !== assignment?.id) ? ' · Reassign' : ''}</option>)}</select>{existingAssignment && <small className="assignment-serial-hint">This available asset is already listed for {existingAssignment.employee_name}; saving will update its assignment.</small>}{(!assetsForType.length || serialMissing) && <small className="assignment-serial-hint" id="assignment-serial-hint">{assetsForType.length ? 'Serial number is required — pick one from the dropdown below.' : 'No available serial numbers match this asset type.'}</small>}</label>{fields.slice(4).map(({ key, label, required, type }) => <label key={key}>{label}{required && ' *'}<input required={required} type={type ?? 'text'} value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}<label className="span-2">Remarks<textarea maxLength={1000} value={form.remarks} onChange={(event) => setForm({ ...form, remarks: event.target.value })} placeholder="Optional assignment notes" /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? 'Saving...' : assignment ? 'Save changes' : 'Create assignment'}</button></div></form></div>;
@@ -1680,11 +1640,11 @@ function UserManagementView({ currentUser }: { currentUser: AppUser }) {
     </section>
     <section className="panel user-permissions-panel"><PanelHeader title="Role permissions" subtitle="Access is enforced by the server for every request." /><div className="user-permissions-grid">
       <p><strong>Admin</strong><span>Full workspace access, including user management and account roles.</span></p>
-      <p><strong>IT asset manager</strong><span>Manage assets and lifecycle, employee requests, write-offs, receipts, and service tickets.</span></p>
+      <p><strong>IT asset manager</strong><span>Manage assets and lifecycle, employee requests, write-offs, and receipts.</span></p>
       <p><strong>Procurement officer</strong><span>Manage procurement requests and inventory receipts.</span></p>
       <p><strong>Finance officer</strong><span>Manage invoices and view finance-approved documents.</span></p>
       <p><strong>Approver</strong><span>Review and update purchase request approvals.</span></p>
-      <p><strong>Employee</strong><span>Submit purchase and equipment requests and create service tickets.</span></p>
+      <p><strong>Employee</strong><span>Submit purchase and equipment requests.</span></p>
       <p><strong>Auditor</strong><span>Read-only access to the audit log and permitted documents.</span></p>
     </div></section>
     {modalOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}><form className="modal-card user-create-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Workspace access</p><h2>Add new user</h2></div><button type="button" className="icon-button" onClick={closeModal} aria-label="Close" disabled={saving}><X size={18} /></button></div><div className="form-grid"><label>Full name<input required autoComplete="name" value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} /></label><label>Email<input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Temporary password<input required type="password" minLength={6} autoComplete="new-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><small>At least 6 characters. Share it with the user securely.</small></label><label>Department<input required value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })} /></label><label>Role<select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>{workspaceRoles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label></div>{formError && <div className="auth-message">{formError}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" disabled={saving} onClick={closeModal}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <UserPlus size={16} />}{saving ? 'Creating...' : 'Create user'}</button></div></form></div>}
@@ -2215,29 +2175,6 @@ function AssetModal({ userName, department, onClose, onSaved }: { userName: stri
     }
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Asset register</p><h2>Add new asset</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label>Asset tag<input required value={form.asset_tag} onChange={(event) => update('asset_tag', event.target.value)} placeholder="IT-LAP-0007" /></label><label>Category<select value={form.category} onChange={(event) => update('category', event.target.value)}><option>Laptop</option><option>Monitor</option><option>Mobile</option><option>Network device</option><option>Server</option></select></label><label>Manufacturer<input required value={form.manufacturer} onChange={(event) => update('manufacturer', event.target.value)} placeholder="Dell" /></label><label>Model<input required value={form.model} onChange={(event) => update('model', event.target.value)} placeholder="Latitude 7450" /></label><label>Serial number<input required value={form.serial_number} onChange={(event) => update('serial_number', event.target.value)} placeholder="SN-000000" /></label><label>Department<input required value={form.department} onChange={(event) => update('department', event.target.value)} placeholder="Engineering" /></label><label>Custodian<input required value={form.custodian} onChange={(event) => update('custodian', event.target.value)} placeholder="Asset custodian" /></label><label>Location<input required value={form.location} onChange={(event) => update('location', event.target.value)} placeholder="HQ / Floor 1" /></label><label>Purchase cost<input required type="number" min="0" value={form.purchase_cost} onChange={(event) => update('purchase_cost', event.target.value)} placeholder="0" /></label><label>Warranty start<input type="date" max={form.warranty_end || undefined} value={form.warranty_start} onChange={(event) => update('warranty_start', event.target.value)} /></label><label>Warranty end<input type="date" min={form.warranty_start || undefined} value={form.warranty_end} onChange={(event) => update('warranty_end', event.target.value)} /></label><div className="warranty-lookup-form-row"><span className="warranty-lookup-label">Manufacturer warranty lookup</span><WarrantyLookupLink manufacturer={form.manufacturer} serialNumber={form.serial_number} /></div></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Saving...' : 'Add asset'}</button></div></form></div>;
-}
-
-const ticketDueLabels: Record<Ticket['priority'], string> = { URGENT: 'Due today', HIGH: 'Due tomorrow', MEDIUM: 'Due in 3 days', LOW: 'Due next week' };
-
-function TicketModal({ userName, onClose, onSaved }: { userName: string; onClose: () => void; onSaved: () => void }) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ title: '', category: 'Hardware', priority: 'MEDIUM' as Ticket['priority'], requester: userName, assignee: 'Service Desk' });
-  const update = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await api.post('/api/tickets', { title: form.title, category: form.category, priority: form.priority, assignee: form.assignee, requester: form.requester, due_label: ticketDueLabels[form.priority] });
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not create the ticket. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><p className="eyebrow">Service desk</p><h2>Create ticket</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="form-grid"><label className="span-2">Title<input required value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="Describe the issue or request" /></label><label>Category<select value={form.category} onChange={(event) => update('category', event.target.value)}><option>Hardware</option><option>Software</option><option>Network</option><option>Access</option><option>Onboarding</option><option>Other</option></select></label><label>Priority<select value={form.priority} onChange={(event) => update('priority', event.target.value)}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Requester<input required value={form.requester} onChange={(event) => update('requester', event.target.value)} /></label><label>Assignee<input required value={form.assignee} onChange={(event) => update('assignee', event.target.value)} /></label></div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />} {saving ? 'Creating...' : 'Create ticket'}</button></div></form></div>;
 }
 
 function PurchaseRequestModal({ userName, department, onClose, onSaved }: { userName: string; department: string; onClose: () => void; onSaved: () => void }) {
