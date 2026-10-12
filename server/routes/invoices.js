@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { audit, getDb, newId } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
-import { extractInvoice } from '../openai.js';
+
 
 const router = Router();
 router.use(requireAuth);
@@ -147,37 +147,11 @@ router.post('/process', requireRole('admin', 'finance_officer'), async (req, res
   try {
     const body = req.body ?? {};
     const fileDataUrl = body.fileDataUrl ?? body.imageDataUrl;
-    const { filename, document_id } = body;
+    const { document_id } = body;
     if (typeof fileDataUrl !== 'string' || !/^data:(application\/pdf|image\/(?:png|jpeg|webp));base64,/.test(fileDataUrl)) {
       return res.status(400).json({ error: 'Upload a PDF, PNG, JPG, or WebP invoice document.' });
     }
     if (fileDataUrl.length > 15000000) {
       return res.status(413).json({ error: 'The invoice document is too large to review.' });
     }
-    const extraction = await extractInvoice(fileDataUrl, filename);
-    if (document_id) {
-      const doc = getDb().prepare('SELECT * FROM app_documents WHERE id = ?').get(document_id);
-      const canEdit = doc && (doc.uploaded_by === req.user.id || ['admin', 'finance_officer'].includes(req.user.role));
-      if (canEdit) {
-        const confidence = Math.max(0, Math.min(100, Number(extraction.confidence) || 0));
-        const reviewReason = extraction.review_reason || null;
-        getDb()
-          .prepare(
-            `UPDATE app_documents SET extraction_status = ?, extracted_fields = ?, confidence = ?, review_reason = ?, updated_at = datetime('now') WHERE id = ?`,
-          )
-          .run(
-            confidence >= 85 && !reviewReason ? 'VALIDATED' : 'NEEDS_REVIEW',
-            JSON.stringify(extraction),
-            confidence,
-            reviewReason,
-            document_id,
-          );
-      }
-    }
-    res.json({ extraction });
-  } catch (e) {
-    next(e);
-  }
-});
-
-export const invoicesRouter = router;
+    audit(req.user.id, 'UPLOAD', 'invoice', id, 'SUCCESS');

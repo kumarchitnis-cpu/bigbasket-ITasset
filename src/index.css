@@ -325,7 +325,28 @@ button { cursor: pointer; }
 .employee-assignment-table th { padding-top: 12px; }
 .employee-assignment-table td { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .employee-assignment-table td:first-child strong { color: #294459; font-size: 11px; }
-.employee-assignment-table .employee-serial-number { color: #2d7180; font-size: 10px; font-weight: 700; }
+.employee-assignment-table .employee-serial-number { padding: 0; border: 0; color: #2d7180; background: transparent; font: inherit; font-size: 10px; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.employee-assignment-table .employee-serial-number:hover { color: #174b65; }
+.employee-assignment-table .employee-serial-number:focus-visible { border-radius: 2px; outline: 2px solid #4d8992; outline-offset: 3px; }
+.employee-asset-details-card { width: min(760px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; }
+.employee-asset-details-section + .employee-asset-details-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid #e8eef0; }
+.employee-asset-details-section h3 { margin: 0; color: #28465c; font: 700 12px Manrope, sans-serif; }
+.employee-asset-details-section .asset-detail-grid { margin: 10px 0 0; }
+.employee-asset-detail-wide { grid-column: 1 / -1; }
+.record-link { padding: 0; border: 0; color: #2d7180; background: transparent; font: inherit; font-weight: 700; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
+.record-link:hover { color: #174b65; }
+.record-link:focus-visible { border-radius: 2px; outline: 2px solid #4d8992; outline-offset: 3px; }
+.vendor-name-link { font-size: 11px; }
+.record-details-card { width: min(700px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; }
+.record-details-section { display: grid; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #e8eef0; color: #526f80; font-size: 11px; }
+.record-details-section h3 { margin: 0; color: #28465c; font: 700 12px Manrope, sans-serif; }
+.record-details-wide { grid-column: 1 / -1; }
+.record-related-list { display: grid; gap: 7px; }
+.record-related-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid #e7edef; border-radius: 7px; color: #38566b; background: #fbfcfd; text-align: left; }
+.record-related-row:hover { border-color: #b8d3d7; background: #f4f9f9; }
+.record-related-row > span { display: grid; gap: 4px; }
+.record-related-row strong { color: #2d7180; font-size: 11px; }
+.record-related-row small { color: #8296a2; font-size: 10px; }
 .employee-assignment-actions { display: flex; gap: 6px; }
 .employee-assignment-actions .button { height: 29px; padding: 0 8px; font-size: 10px; }
 .employee-assignment-delete { border: 1px solid #f0d8d3; border-radius: 7px; background: #fff8f6; color: #a84f47; }
@@ -540,3 +561,8 @@ button { cursor: pointer; }
   .data-table { min-width: 0 !important; }
   .warranty-report .data-table th, .warranty-report .data-table td { padding: 8px; }
 }
+@media (max-width: 900px) {
+}
+@media (max-width: 600px) {
+}
+.topbar { position: sticky; top: 0; z-index: 5; }

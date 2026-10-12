@@ -17,6 +17,12 @@ export function uploadsDir() {
   return UPLOADS_DIR;
 }
 
+export function getOcrCacheDir() {
+  const cacheDir = path.join(DATA_DIR, 'tesseract-cache');
+  mkdirSync(cacheDir, { recursive: true });
+  return cacheDir;
+}
+
 export function nowIso() {
   return new Date().toISOString();
 }

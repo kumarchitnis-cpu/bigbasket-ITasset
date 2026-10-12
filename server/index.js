@@ -7,7 +7,6 @@ import { assetsRouter } from './routes/assets.js';
 import { invoicesRouter } from './routes/invoices.js';
 import { ticketsRouter } from './routes/tickets.js';
 import { purchaseRequestsRouter } from './routes/purchase-requests.js';
-import { documentsRouter } from './routes/documents.js';
 import { miscRouter } from './routes/misc.js';
 import { assetWorkflowsRouter } from './routes/asset-workflows.js';
 import { assistantRouter } from './routes/assistant.js';
@@ -37,7 +36,6 @@ app.use('/api/workflows', assetWorkflowsRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/settings', settingsRouter);
-app.use('/api/documents', documentsRouter);
 app.use('/api', miscRouter);
 
 app.use((err, req, res, next) => {

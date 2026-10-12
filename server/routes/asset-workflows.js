@@ -41,9 +41,8 @@ function parseAssignment(body, db, existingId = null) {
     return { error: 'Only available assets can be assigned.' };
   }
   const duplicate = db.prepare('SELECT id FROM it_employee_asset_assignments WHERE serial_number = ? AND id != ?').get(assignment.serial_number, existingId || '');
-  if (duplicate) return { error: 'This serial number is already assigned to an employee.' };
   assignment.asset_model = asset.model;
-  return { assignment };
+  return { assignment, duplicate };
 }
 
 router.get('/employee-assignments', (req, res, next) => {
@@ -95,8 +94,17 @@ router.post('/employee-assignments', requireRole(...assignmentRoles), (req, res,
     const db = getDb();
     const parsed = parseAssignment(req.body, db);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
-    const id = newId();
     const columns = assignmentFields.map(([field]) => field);
+    if (parsed.duplicate) {
+      db.prepare(
+        `UPDATE it_employee_asset_assignments
+         SET ${columns.map((field) => `${field} = ?`).join(', ')}, updated_at = ?
+         WHERE id = ?`,
+      ).run(...columns.map((field) => parsed.assignment[field]), nowIso(), parsed.duplicate.id);
+      audit(req.user.id, 'UPDATE', 'employee_asset_assignment', parsed.duplicate.id, 'SUCCESS', 'Reassigned available asset');
+      return res.json(db.prepare('SELECT * FROM it_employee_asset_assignments WHERE id = ?').get(parsed.duplicate.id));
+    }
+    const id = newId();
     db.prepare(
       `INSERT INTO it_employee_asset_assignments (id, ${columns.join(', ')}, created_by)
        VALUES (?, ${columns.map(() => '?').join(', ')}, ?)`,
@@ -115,6 +123,7 @@ router.put('/employee-assignments/:id', requireRole(...assignmentRoles), (req, r
     if (!existing) return res.status(404).json({ error: 'Employee asset assignment not found.' });
     const parsed = parseAssignment(req.body, db, existing.id);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
+    if (parsed.duplicate) return res.status(409).json({ error: 'This serial number is already assigned to another employee.' });
     const columns = assignmentFields.map(([field]) => field);
     db.prepare(
       `UPDATE it_employee_asset_assignments
