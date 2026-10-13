@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Activity,
   ArrowDownRight,
@@ -213,6 +214,12 @@ const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
   { label: 'Notifications', icon: Bell },
   { label: 'Settings', icon: Settings2 },
   { label: 'User Management', icon: Users },
+];
+
+const navGroups: { label: string; items: Tab[] }[] = [
+  { label: 'Workspace', items: ['Overview', 'AI Assistant'] },
+  { label: 'Asset operations', items: ['Assets', 'Emp Asset Mgmt', 'Inventory', 'Invoices', 'Warranties', 'Write-Off'] },
+  { label: 'Administration', items: ['Notifications', 'User Management', 'Settings'] },
 ];
 
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -430,8 +437,9 @@ function App() {
           <div><div className="brand-name">bigbasket</div><div className="brand-subtitle">IT OPERATIONS</div></div>
           <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation menu"><X size={18} /></button>
         </div>
-        <div className="nav-section-label">Workspace</div>
-        <nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => (label !== 'User Management' || user.role === 'admin')).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav>
+        <div className="workspace-card"><span className="workspace-card-mark">B</span><span><strong>Bigbasket ITAM</strong><small>Operations workspace</small></span><ChevronDown size={14} /></div>
+        <div className="sidebar-navigation-label">NAVIGATION</div>
+        <div className="sidebar-navigation">{navGroups.map((group) => <section className="nav-group" key={group.label}><div className="nav-section-label">{group.label}</div><nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => group.items.includes(label) && (label !== 'User Management' || user.role === 'admin')).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label === 'Emp Asset Mgmt' ? 'Employee assets' : label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav></section>)}</div>
         <div className="sidebar-bottom"><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
@@ -1636,7 +1644,7 @@ function AssetLifecycleDialog({ asset, canManage, onClose, onSaved }: { asset: A
     }
   };
 
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card asset-lifecycle-card" role="dialog" aria-modal="true" aria-labelledby="asset-lifecycle-title">
+  return createPortal(<div className="modal-backdrop asset-lifecycle-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-card asset-lifecycle-card" role="dialog" aria-modal="true" aria-labelledby="asset-lifecycle-title">
     <div className="modal-header"><div><p className="eyebrow">Asset lifecycle</p><h2 id="asset-lifecycle-title">{currentAsset.asset_tag}</h2><span className="asset-modal-model">{currentAsset.manufacturer} {currentAsset.model}</span></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close asset history"><X size={18} /></button></div>
     <div className="asset-detail-grid"><div><span>Status</span><StatusBadge status={currentAsset.status} /></div><div><span>Custodian</span><strong>{currentAsset.custodian}</strong></div><div><span>Location</span><strong>{currentAsset.location}</strong></div><div><span>Condition</span><strong>{currentAsset.condition.toLowerCase()}</strong></div><div><span>Last audited</span><strong>{currentAsset.last_audited_at ? formatDate(currentAsset.last_audited_at) : 'Not audited'}</strong></div><div><span>Warranty start</span><strong>{currentAsset.warranty_start ? formatDate(currentAsset.warranty_start) : 'Not recorded'}</strong></div><div><span>Warranty end</span><strong>{currentAsset.warranty_end ? formatDate(currentAsset.warranty_end) : 'Not recorded'}</strong></div></div>
     <WarrantyLookupLink manufacturer={currentAsset.manufacturer} serialNumber={currentAsset.serial_number} />
@@ -1651,7 +1659,7 @@ function AssetLifecycleDialog({ asset, canManage, onClose, onSaved }: { asset: A
     </form>}
     <section className="asset-history"><div className="lifecycle-section-heading"><div><strong>Lifecycle history</strong><span>Recorded asset actions, assignments, and audit checks.</span></div></div>{eventsLoading ? <div className="history-state"><Loader2 size={17} className="spin" /> Loading history</div> : eventsError ? <div className="history-error"><span>{eventsError}</span><button className="text-button" onClick={() => void loadEvents()}>Retry</button></div> : events.length === 0 ? <div className="history-state">No lifecycle events recorded.</div> : <ol className="asset-event-list">{events.map((item) => <li key={item.id}><span className="event-marker"><Activity size={13} /></span><div className="event-copy"><strong>{assetEventLabel(item.event_type)}</strong><span>{assetEventDescription(item)}</span>{item.notes && <p>{item.notes}</p>}<small>{item.actor_name} · {formatDateTime(item.created_at)}</small></div></li>)}</ol>}</section>
     <div className="modal-actions lifecycle-close"><button className="button button-secondary" onClick={onClose}>Close</button></div>
-  </div></div>;
+  </div></div>, document.body);
 }
 
 function assetEventLabel(eventType: string) {

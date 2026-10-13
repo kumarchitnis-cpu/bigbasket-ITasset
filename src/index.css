@@ -47,6 +47,7 @@ button { cursor: pointer; }
 .row-action:hover { background: #eaf4f4; }
 .asset-workflow-note { display: inline-flex; align-items: center; gap: 7px; color: #7d939e; font-size: 11px; }
 .asset-lifecycle-card { width: min(760px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; }
+.asset-lifecycle-backdrop { z-index: 40; overflow-y: auto; }
 .asset-modal-model { display: block; color: #8296a1; font-size: 11px; margin-top: 5px; }
 .asset-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid #e6edef; border-radius: 8px; margin: 18px 0 22px; }
 .asset-detail-grid > div { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; min-width: 0; padding: 13px; background: #fbfcfd; }
@@ -90,6 +91,52 @@ button { cursor: pointer; }
 .sidebar-nav .nav-item { min-height: 38px; }
 .sidebar-nav .nav-section-label { flex-shrink: 0; }
 .module-panel-gap { margin-top: 18px; }
+
+/* Bigbasket workspace navigation refresh */
+.sidebar { position: fixed; z-index: 40; top: 0; bottom: 0; left: -310px; width: 292px; height: 100vh; padding: 25px 17px 16px; color: #294459; background: #fff; border-right: 1px solid #e6ecef; box-shadow: 16px 0 44px rgba(19,48,66,.15); }
+.sidebar-open { left: 0; }
+.brand-row { padding: 0 8px 20px; }
+.brand-logo { width: 38px; height: 38px; border-radius: 10px; }
+.brand-name { color: #18344f; letter-spacing: .04em; }
+.brand-subtitle { color: #8598a2; }
+.sidebar-close { width: 30px; height: 30px; border-radius: 7px; color: #81949f; }
+.sidebar-close:hover { color: #24465c; background: #f0f5f5; }
+.workspace-card { display: flex; align-items: center; gap: 10px; margin: 2px 2px 22px; padding: 11px 10px; border: 1px solid #e1ece8; border-radius: 10px; background: linear-gradient(110deg,#f1f8ed,#f6faf8); color: #51716e; }
+.workspace-card-mark { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; color: #31571e; background: #d8eea9; font: 800 16px Manrope,sans-serif; }
+.workspace-card > span:nth-child(2) { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.workspace-card strong { color: #27465c; font-size: 11px; }
+.workspace-card small { color: #82958f; font-size: 9px; }
+.sidebar-navigation-label { padding: 0 10px; margin-bottom: 6px; color: #a0adb3; font-size: 9px; font-weight: 800; letter-spacing: .15em; }
+.sidebar-navigation { min-height: 0; flex: 1; overflow-y: auto; padding: 0 2px; scrollbar-width: thin; scrollbar-color: #d4e2dd transparent; }
+.nav-group + .nav-group { margin-top: 13px; }
+.nav-section-label { padding: 9px 10px 7px; color: #8b9da5; font-size: 9px; letter-spacing: .1em; }
+.main-nav { gap: 3px; }
+.nav-item { min-height: 39px; padding: 0 11px; gap: 11px; border-radius: 8px; color: #617985; font-size: 11px; font-weight: 600; }
+.nav-item svg { color: #81969e; }
+.nav-item:hover { color: #355c49; background: #f3f8ef; }
+.nav-item:hover svg { color: #5c8a3d; }
+.nav-item.active { color: #355b22; background: #edf6e3; box-shadow: inset 3px 0 0 #8ebd3d; }
+.nav-item.active svg { color: #689334; }
+.nav-count { background: #d87857; }
+.sidebar-bottom { margin: 12px 2px 0; padding-top: 12px; border-top: 1px solid #edf1f2; }
+.profile-row { padding: 8px 6px 2px; }
+.avatar-dark { color: #31571e; background: #e2efcf; }
+.profile-copy strong { color: #29475b; font-size: 11px; }
+.profile-copy span { color: #82959e; }
+.more-dots { color: #788e98; }
+.topbar { position: sticky; top: 0; z-index: 5; height: 70px; padding: 0 34px; background: rgba(255,255,255,.96); border-bottom-color: #e7ecee; box-shadow: 0 3px 14px rgba(25,54,71,.035); backdrop-filter: blur(12px); }
+.navigation-menu-button { height: 36px; padding: 0 11px; gap: 8px; border: 1px solid #e2e9e7; border-radius: 8px; color: #385c44; background: #f8fbf5; }
+.navigation-menu-button:hover { border-color: #cddfbd; background: #eff7e7; }
+.navigation-menu-button svg { color: #618b3b; }
+.breadcrumbs { margin-left: 17px; color: #9aa8ae; font-size: 11px; }
+.breadcrumbs strong { color: #29465c; font-size: 12px; }
+.crumb-divider { color: #d0d9dc; }
+@media (max-width: 800px) {
+  .sidebar { left: -310px; width: min(292px, calc(100vw - 42px)); height: 100dvh; padding: 22px 15px 14px; }
+  .sidebar-open { left: 0; }
+  .topbar { height: 62px; padding: 0 15px; }
+  .breadcrumbs { margin-left: 5px; }
+}
 .module-form-panel { margin-bottom: 18px; }
 .module-error { margin: 0 0 14px; }
 .employee-request-row { align-items: center; }
