@@ -220,6 +220,10 @@ button { cursor: pointer; }
 .operations-dashboard .heading-copy { margin-top: 6px; }
 .dashboard-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .dashboard-metrics .metric-card { padding: 15px; }
+.dashboard-warranty-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 9px; }
+.dashboard-warranty-counts > div { display: flex; flex-direction: column-reverse; gap: 4px; }
+.dashboard-warranty-counts span { color: #99a8b1; font-size: 10px; line-height: 1.3; }
+.dashboard-warranty-counts strong { color: #18344f; font: 800 21px/1 Manrope, sans-serif; letter-spacing: -.04em; }
 .dashboard-metrics .metric-icon { width: 30px; height: 30px; margin-bottom: 12px; }
 .dashboard-metrics .metric-label { font-size: 11px; }
 .dashboard-metrics .metric-value-row strong { font-size: 24px; }

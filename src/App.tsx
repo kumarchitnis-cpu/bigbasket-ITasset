@@ -440,7 +440,7 @@ function App() {
 
         <div className="page-content">
           {activeTab === 'Settings' ? <SettingsView user={user} onSaved={setUser} /> : loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
-            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} onOpenAssets={() => showTab('Assets')} onOpenInvoices={() => showTab('Invoices')} onOpenEmployeeRequests={() => showTab('Emp Asset Mgmt')} onOpenWarranties={() => showTab('Warranties')} />}
+            {activeTab === 'Overview' && <Overview assets={assets} invoices={invoices} employeeRequests={employeeRequests} activity={dashboardActivity} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} onOpenAssets={() => showTab('Assets')} onOpenEmployeeRequests={() => showTab('Emp Asset Mgmt')} />}
             {activeTab === 'Assets' && <AssetsView assets={filteredAssets} user={user} onAdd={() => setAssetModalOpen(true)} onRefresh={() => void loadData(true)} onImportComplete={async () => { setQuery(''); setRefreshing(true); try { setAssets(await api.get<Asset[]>('/api/assets')); } finally { setRefreshing(false); } }} query={query} openAssetId={pendingAssetId} onAssetOpened={() => setPendingAssetId(null)} onOpenWarranties={() => showTab('Warranties')} />}
             {activeTab === 'Invoices' && <InvoicesView invoices={invoices} user={user} query={query} onSaved={() => void loadData(true)} />}
             {activeTab === 'Emp Asset Mgmt' && <EmployeeAssetsView requests={employeeRequests} assets={assets} user={user} onSaved={() => void loadData(true)} />}
@@ -466,12 +466,13 @@ function Overview({ assets, invoices, employeeRequests, activity, onOpenAsset, o
   activity: DashboardData;
   onOpenAsset: (asset: Asset) => void;
   onOpenAssets: () => void;
-  onOpenInvoices: () => void;
   onOpenEmployeeRequests: () => void;
-  onOpenWarranties: () => void;
 }) {
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
   const activeAssets = assets.filter((asset) => asset.status !== 'RETIRED').length;
+  const warrantyAssets = assets.filter((asset) => asset.status !== 'RETIRED');
+  const underWarrantyCount = warrantyAssets.filter((asset) => ['ACTIVE', 'EXPIRING'].includes(warrantyStatus(asset))).length;
+  const outOfWarrantyCount = warrantyAssets.filter((asset) => warrantyStatus(asset) === 'EXPIRED').length;
   const employeeRequestStatuses = [
     { label: 'Awaiting approval', value: employeeRequests.filter((request) => request.status === 'PENDING_APPROVAL').length, color: 'amber' },
     { label: 'Approved', value: employeeRequests.filter((request) => request.status === 'APPROVED').length, color: 'teal' },
@@ -482,13 +483,13 @@ function Overview({ assets, invoices, employeeRequests, activity, onOpenAsset, o
   return <div className="fade-in operations-dashboard">
     <div className="page-heading">
       <div><p className="eyebrow">Workspace overview <span className="live-dot"></span> Live data</p><h1>Operations Dashboard</h1><p className="heading-copy">{today} · Asset and operations overview.</p></div>
-      <div className="heading-actions"><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report <ArrowUpRight size={14} /></button><button className="button button-secondary" onClick={onOpenInvoices}><FileText size={16} /> Invoice register <ArrowUpRight size={14} /></button><button className="button button-primary" onClick={onOpenAssets}><Plus size={17} /> Add asset</button></div>
     </div>
 
     <div className="metric-grid dashboard-metrics">
       <MetricCard label="Total assets" value={assets.length.toLocaleString()} note="Registered in workspace" icon={Box} tone="blue" />
       <MetricCard label="Active assets" value={activeAssets.toLocaleString()} note={`${assets.length - activeAssets} retired`} icon={BriefcaseBusiness} tone="teal" />
       <MetricCard label="Invoice records" value={invoices.length.toLocaleString()} note="Tracked in invoice register" icon={FileText} tone="blue" />
+      <div className="metric-card dashboard-warranty-card"><div className="metric-icon teal"><BadgeCheck size={18} /></div><div className="metric-label">Warranty coverage</div><div className="dashboard-warranty-counts"><div><span>Under warranty</span><strong>{underWarrantyCount.toLocaleString()}</strong></div><div><span>Out of warranty</span><strong>{outOfWarrantyCount.toLocaleString()}</strong></div></div></div>
     </div>
 
     <div className="dashboard-reference-grid dashboard-overview-grid">
@@ -554,6 +555,9 @@ function DashboardTrend({ values, color }: { values: { date: string; label: stri
 
 function AssetsView({ assets, user, onAdd, onRefresh, onImportComplete, query, openAssetId, onAssetOpened, onOpenWarranties }: { assets: Asset[]; user: AppUser; onAdd: () => void; onRefresh: () => void; onImportComplete: () => Promise<void>; query: string; openAssetId: string | null; onAssetOpened: () => void; onOpenWarranties: () => void }) {
   const [statusFilter, setStatusFilter] = useState<'ALL' | Asset['status']>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [custodianFilter, setCustodianFilter] = useState('ALL');
+  const [locationFilter, setLocationFilter] = useState('ALL');
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const canManage = user.role === 'admin' || user.role === 'it_asset_manager';
@@ -565,15 +569,18 @@ function AssetsView({ assets, user, onAdd, onRefresh, onImportComplete, query, o
       onAssetOpened();
     }
   }, [assets, onAssetOpened, openAssetId]);
-  const counts = useMemo(() => ({
-    ALL: assets.length,
-    ASSIGNED: assets.filter((asset) => asset.status === 'ASSIGNED').length,
-    AVAILABLE: assets.filter((asset) => asset.status === 'AVAILABLE').length,
-    UNDER_MAINTENANCE: assets.filter((asset) => asset.status === 'UNDER_MAINTENANCE').length,
-    QUARANTINED: assets.filter((asset) => asset.status === 'QUARANTINED').length,
-    RETIRED: assets.filter((asset) => asset.status === 'RETIRED').length,
-  }), [assets]);
-  const visibleAssets = statusFilter === 'ALL' ? assets : assets.filter((asset) => asset.status === statusFilter);
+  const categories = useMemo(() => [...new Set(assets.map((asset) => asset.category.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [assets]);
+  const custodians = useMemo(() => [...new Set(assets.map((asset) => asset.custodian.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [assets]);
+  const locations = useMemo(() => [...new Set(assets.map((asset) => asset.location.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [assets]);
+  const visibleAssets = assets.filter((asset) => {
+    const term = query.trim().toLowerCase();
+    const matchesQuery = !term || [asset.asset_tag, asset.category, asset.manufacturer, asset.model, asset.serial_number, asset.custodian, asset.location, asset.department].some((value) => value.toLowerCase().includes(term));
+    return matchesQuery
+      && (categoryFilter === 'ALL' || asset.category === categoryFilter)
+      && (custodianFilter === 'ALL' || asset.custodian === custodianFilter)
+      && (locationFilter === 'ALL' || asset.location === locationFilter)
+      && (statusFilter === 'ALL' || asset.status === statusFilter);
+  });
   const downloadReport = () => {
     const headers = ['Asset Tag', 'Category', 'Manufacturer', 'Model', 'Serial Number', 'Status', 'Condition', 'Custodian', 'Location', 'Department', 'Purchase Cost', 'Warranty Start', 'Warranty End'];
     const rows = visibleAssets.map((asset) => [
@@ -593,15 +600,7 @@ function AssetsView({ assets, user, onAdd, onRefresh, onImportComplete, query, o
     anchor.click();
     URL.revokeObjectURL(url);
   };
-  const pills: { key: typeof statusFilter; label: string }[] = [
-    { key: 'ALL', label: 'All assets' },
-    { key: 'ASSIGNED', label: 'Assigned' },
-    { key: 'AVAILABLE', label: 'Available' },
-    { key: 'UNDER_MAINTENANCE', label: 'Maintenance' },
-    { key: 'QUARANTINED', label: 'Quarantined' },
-    { key: 'RETIRED', label: 'Retired' },
-  ];
-  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div><div className="heading-actions"><button className="button button-secondary" onClick={downloadReport}><Download size={16} /> Download Report</button><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report</button>{canManage && <><button className="button button-secondary" onClick={() => setUploadOpen(true)}><Upload size={16} /> Upload Excel</button><button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button></>}</div></div><div className="subnav-row"><div className="tab-pills">{pills.map(({ key, label }) => <button key={key} className={statusFilter === key ? 'selected' : ''} onClick={() => setStatusFilter(key)}>{label} <span>{counts[key]}</span></button>)}</div><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} onOpenWarranties={onOpenWarranties} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}{uploadOpen && <AssetImportModal onClose={() => setUploadOpen(false)} onSaved={async () => { setStatusFilter('ALL'); await onImportComplete(); }} />}</div>;
+  return <div className="fade-in"><div className="page-heading"><div><p className="eyebrow">Asset lifecycle <span className="eyebrow-separator">/</span> Register</p><h1>Asset register</h1><p className="heading-copy">Every device, assignment, and lifecycle event in one place.</p></div><div className="heading-actions"><button className="button button-secondary" onClick={downloadReport}><Download size={16} /> Download Report</button><button className="button button-secondary" onClick={onOpenWarranties}><BadgeCheck size={16} /> Warranty report</button>{canManage && <><button className="button button-secondary" onClick={() => setUploadOpen(true)}><Upload size={16} /> Upload Excel</button><button className="button button-primary" onClick={onAdd}><Plus size={17} /> Add asset</button></>}</div></div><div className="subnav-row"><div className="asset-workflow-note"><Activity size={15} /> Lifecycle actions are recorded to the asset history</div></div>{query && <div className="filter-note"><Search size={14} /> Showing matches for “{query}”</div>}<div className="asset-filter-toolbar invoice-toolbar"><label className="invoice-filter-label">Category<select aria-label="Filter assets by category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="ALL">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label className="invoice-filter-label">Custodian<select aria-label="Filter assets by custodian" value={custodianFilter} onChange={(event) => setCustodianFilter(event.target.value)}><option value="ALL">All custodians</option>{custodians.map((custodian) => <option key={custodian} value={custodian}>{custodian}</option>)}</select></label><label className="invoice-filter-label">Location<select aria-label="Filter assets by location" value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}><option value="ALL">All locations</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></label><label className="invoice-filter-label">Status<select aria-label="Filter assets by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="ALL">All statuses</option>{(['ASSIGNED', 'AVAILABLE', 'UNDER_MAINTENANCE', 'QUARANTINED', 'RETIRED'] as const).map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label></div><section className="panel table-panel full-panel"><AssetTable assets={visibleAssets} onManage={setSelectedAsset} onOpenWarranties={onOpenWarranties} /></section>{selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}{uploadOpen && <AssetImportModal onClose={() => setUploadOpen(false)} onSaved={async () => { setStatusFilter('ALL'); setCategoryFilter('ALL'); setCustodianFilter('ALL'); setLocationFilter('ALL'); await onImportComplete(); }} />}</div>;
 }
 
 function AssetImportModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
