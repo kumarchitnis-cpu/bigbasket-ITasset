@@ -1,6 +1,6 @@
 # bigbasket ITAM
 
-Internal IT asset management workspace for Bigbasket — asset register and lifecycle, employee equipment requests, inventory, warranties, write-offs, invoices, document OCR, and notifications. Self-hosted: Node.js API + SQLite.
+Internal IT asset management workspace for Bigbasket — asset register and lifecycle, employee equipment requests, inventory, warranties, write-offs, invoices, and notifications. Self-hosted: Node.js API + SQLite.
 
 ## Stack
 
@@ -19,8 +19,6 @@ npm run dev
 ```
 
 `npm run dev` starts both the API server (port 3001) and the Vite dev server. The first account you create is automatically assigned the `admin` role; every later signup becomes `employee`.
-
-Open **Document Scanner** after signing in to scan invoices, purchase orders, warranty/asset records, and other asset documents. Upload a PDF or a PNG/JPG/WebP scan (up to 10 MB); selectable-text PDFs are parsed directly, while image-only PDFs and scans use Tesseract.js on the API server CPU. Review the extracted JSON and OCR text, correct any fields, and save. Invoice upload uses the same local scanner and then lets finance roles add the reviewed result to the invoice register. Documents are not sent to OpenAI or another OCR service.
 
 The first scan downloads the English OCR model and caches it in `DATA_DIR/tesseract-cache`; later scans use that local cache. To preinstall the model on a connected server for a network-isolated machine, run one scan, then copy the `tesseract-cache` directory together with the app's `DATA_DIR`. Alternatively, place `eng.traineddata` in a local folder and set `TESSDATA_DIR` to that folder before starting the API. Scanned PDFs are rendered and OCR'd for up to the first five pages. Processing uses one reusable OCR worker at a time to limit CPU contention.
 
@@ -75,7 +73,6 @@ Gmail email delivery is available to workspace admins under **Settings → Email
 - Profile settings update the signed-in user's name and department. Workspace administrators can configure company details, branding, approval defaults, notification preferences, AP escalation, and priority-based service-level targets; these settings are stored in SQLite. Notifications are per-user, with read state stored in SQLite. Email notifications use the optional server-side Gmail integration.
 - User management creates accounts with an admin-assigned role and password; deactivated accounts cannot sign in, and their asset/workflow/audit history remains intact.
 - AI Assistant answers using aggregate workspace counts only; it does not receive employee-level records and cannot change data. Configure `OPENAI_API_KEY` in the API server environment and restart the server to enable it. Its connection indicator reports whether a key is configured, not whether that key is valid. Document scanning never uses this key.
-- Document Scanner runs Tesseract.js on the local CPU and rule-based extraction for invoices, purchase orders, and asset/serial-number documents. Scanned PDF pages are rasterized locally (up to five pages). Extracted text and fields are stored with the private document for review; OCR confidence is a heuristic, so confirm identifiers, amounts, and dates against the source. Invoice review and manual entry are available to finance roles; bank details are returned only to finance officers and admins, while invoice files remain subject to document access rules.
 - Uploaded documents are stored under `DATA_DIR/uploads/` with SHA-256 checksums and are served only to permitted roles.
 - For production, run behind HTTPS, set a strong `JWT_SECRET`, restrict `DATA_DIR` permissions, and back up `server-data/`. To move to PostgreSQL later, the schema maps 1:1 (TEXT ids replace UUIDs, REAL replaces numeric, TEXT stores ISO timestamps/JSON).
 

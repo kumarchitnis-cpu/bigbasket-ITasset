@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { audit, getDb, newId } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
+import { extractRawText } from '../extractor.js';
 
 
 const router = Router();
@@ -154,5 +155,68 @@ router.post('/process', requireRole('admin', 'finance_officer'), async (req, res
     if (fileDataUrl.length > 15000000) {
       return res.status(413).json({ error: 'The invoice document is too large to review.' });
     }
-    audit(req.user.id, 'UPLOAD', 'invoice', id, 'SUCCESS');
-    res.json({ id });
+    const db = getDb();
+    if (document_id) {
+      const document = db.prepare('SELECT id, document_type, uploaded_by FROM app_documents WHERE id = ?').get(document_id);
+      if (!document || document.document_type !== 'INVOICE') {
+        return res.status(400).json({ error: 'The linked invoice document could not be found.' });
+      }
+      if (document.uploaded_by !== req.user.id && !['admin', 'finance_officer'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'You cannot process another user’s invoice document.' });
+      }
+      db.prepare("UPDATE app_documents SET extraction_status = 'EXTRACTING', updated_at = datetime('now') WHERE id = ?").run(document_id);
+    }
+
+    const text = await extractRawText(fileDataUrl);
+    if (!text?.trim()) {
+      const error = new Error('No readable text was found in this invoice. Try a clearer scan.');
+      error.status = 422;
+      throw error;
+    }
+
+    const findText = (patterns) => {
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match?.[1]) return match[1].trim().replace(/\s{2,}/g, ' ');
+      }
+      return null;
+    };
+    const findAmount = (patterns) => {
+      const value = findText(patterns);
+      if (!value) return null;
+      const amount = Number(value.replace(/[₹$,\s]/g, '').replace(/,/g, ''));
+      return Number.isFinite(amount) ? amount : null;
+    };
+    const extraction = {
+      invoice_number: findText([/(?:invoice\s*(?:no|number|#)?)\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{2,})/i]),
+      vendor: null,
+      purchase_order: findText([/(?:purchase\s*order|\bP\.?O\.?)\s*(?:no|number|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{2,})/i]),
+      invoice_date: findText([/(?:invoice\s*date|date)\s*[:#-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i]),
+      due_date: findText([/(?:due\s*date)\s*[:#-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i]),
+      currency: /₹|\bINR\b/i.test(text) ? 'INR' : /\$|\bUSD\b/i.test(text) ? 'USD' : null,
+      subtotal: findAmount([/(?:sub\s*total|taxable\s*amount)\s*[:₹$ -]*([\d,]+(?:\.\d{1,2})?)/i]),
+      tax: findAmount([/(?:tax|GST|VAT)\s*[:₹$ -]*([\d,]+(?:\.\d{1,2})?)/i]),
+      total: findAmount([/(?:grand\s*total|invoice\s*total|total\s*due|total)\s*[:₹$ -]*([\d,]+(?:\.\d{1,2})?)/i]),
+      confidence: 0,
+      review_reason: 'OCR results need review before saving.',
+      line_items: [],
+      bank_details: null,
+      asset_details: [],
+    };
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    extraction.vendor = lines.find((line) => line.length > 2 && line.length < 100 && !/invoice|tax invoice|bill to|ship to/i.test(line)) || null;
+    const detected = [extraction.invoice_number, extraction.vendor, extraction.total].filter(Boolean).length;
+    extraction.confidence = Math.round((detected / 3) * 70);
+    const extractedFields = JSON.stringify(extraction);
+    if (document_id) {
+      db.prepare("UPDATE app_documents SET extraction_status = 'NEEDS_REVIEW', extracted_fields = ?, confidence = ?, review_reason = ?, updated_at = datetime('now') WHERE id = ?")
+        .run(extractedFields, extraction.confidence, extraction.review_reason, document_id);
+    }
+    audit(req.user.id, 'PROCESS', 'invoice', document_id || newId(), 'SUCCESS');
+    res.json({ extraction });
+  } catch (e) {
+    next(e);
+  }
+});
+
+export { router as invoicesRouter };
