@@ -411,7 +411,6 @@ button { cursor: pointer; }
 .employee-assignment-delete:hover { background: #fdf0ed; }
 .employee-assignment-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 20px 14px; }
 .employee-request-stats { margin-top: 0; }
-.employee-request-action { display: flex; justify-content: flex-end; margin: 0 0 10px; }
 .employee-assignment-modal { width: min(720px, 100%); }
 .employee-assignment-form textarea { min-height: 76px; padding: 10px; border: 1px solid #dce6ea; border-radius: 6px; outline: 0; color: #27465c; background: #fbfcfd; font: inherit; font-size: 12px; resize: vertical; }
 .employee-assignment-form textarea:focus { border-color: #4d8992; box-shadow: 0 0 0 3px #e3f1f0; }
