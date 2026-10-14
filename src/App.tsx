@@ -466,7 +466,7 @@ function App() {
   );
 }
 
-function Overview({ assets, invoices, employeeRequests, activity, onOpenAsset, onOpenAssets, onOpenInvoices, onOpenEmployeeRequests, onOpenWarranties }: {
+function Overview({ assets, invoices, employeeRequests, activity, onOpenAsset, onOpenAssets, onOpenEmployeeRequests }: {
   assets: Asset[];
   invoices: Invoice[];
   employeeRequests: EmployeeAssetRequest[];
@@ -539,12 +539,6 @@ function makeDailySeries(values: string[], stored: { date: string; count: number
 
 function formatActivity(value: string) {
   return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function DashboardBarList({ items, emptyLabel }: { items: { label: string; value: number; color: string }[]; emptyLabel: string }) {
-  const maximum = Math.max(...items.map((item) => item.value), 0);
-  if (maximum === 0) return <div className="dashboard-chart-empty">{emptyLabel}</div>;
-  return <div className="dashboard-bar-list">{items.map((item) => <div className="dashboard-bar-row" key={item.label}><div className="dashboard-bar-label"><span>{item.label}</span><strong>{item.value}</strong></div><div className="dashboard-bar-track"><span className={item.color} style={{ width: `${Math.max((item.value / maximum) * 100, 3)}%` }} /></div></div>)}</div>;
 }
 
 function DashboardStatusGrid({ items, footer }: { items: { label: string; value: number; color: string }[]; footer: string }) {
@@ -1710,7 +1704,6 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
 function PanelHeader({ title, subtitle, action, onAction }: { title: string; subtitle?: string; action?: string; onAction?: () => void }) { return <div className="panel-header"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action && <button className="text-button" onClick={onAction}>{action} <ArrowUpRight size={14} /></button>}</div>; }
 function PageTitle({ eyebrow, title, copy, action, icon: Icon, onAction }: { eyebrow: string; title: string; copy: string; action?: string; icon?: typeof Plus; onAction?: () => void }) { return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="heading-copy">{copy}</p></div>{action && Icon && <button className="button button-primary" onClick={onAction}><Icon size={17} /> {action}</button>}</div>; }
 function StatusBadge({ status }: { status: string }) { const label = status.split('_').join(' '); return <span className={`status-badge ${status.toLowerCase()}`}><span></span>{label.charAt(0) + label.slice(1).toLowerCase()}</span>; }
-function PriorityBadge({ priority }: { priority: string }) { return <span className={`priority-badge ${priority.toLowerCase()}`}>{priority}</span>; }
 function LoadingState() { return <div className="state-card"><Loader2 size={23} className="spin" /><strong>Loading your workspace</strong><span>Gathering the latest operational data...</span></div>; }
 function ErrorState({ onRetry }: { onRetry: () => void }) { return <div className="state-card error-state"><CircleAlert size={25} /><strong>Workspace unavailable</strong><span>We could not retrieve the latest records.</span><button className="button button-primary" onClick={onRetry}><RefreshCw size={16} /> Try again</button></div>; }
 function EmptyState({ text }: { text: string }) { return <div className="empty-state"><Tag size={18} /><span>{text}</span></div>; }
