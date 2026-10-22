@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { InventoryReceipt } from '@/lib/types';
-import { formatDate } from '@/lib/format';
+import { downloadCsv, formatDate } from '@/lib/format';
 import { EmptyState, MiniStat, PageTitle, PanelHeader, SegmentedTabs, StatStrip, StatusBadge } from '@/components/ui';
 import { BarChart, HorizontalBars } from '@/components/charts';
 
@@ -39,17 +39,10 @@ export function InventoryHistoryView(props: { receipts: InventoryReceipt[] }): J
     return Array.from(map.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
   }, [filtered]);
 
-  const downloadCsv = () => {
+  const downloadHistory = () => {
     const rows: (string | number)[][] = [['Receipt', 'PO', 'Supplier', 'Received', 'Accepted', 'Rejected', 'Ordered', 'Status']];
     for (const r of filtered) rows.push([r.receipt_number, r.purchase_order, r.vendor, r.received_date, r.accepted_quantity, r.rejected_quantity, r.ordered_quantity, r.status]);
-    const csv = rows.map((row) => row.map((v) => `"${String(v ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'inventory-history.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv('inventory-history.csv', rows);
   };
 
   return (
@@ -64,7 +57,7 @@ export function InventoryHistoryView(props: { receipts: InventoryReceipt[] }): J
         <label>Vendor<select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}><option value="">All vendors</option>{vendors.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
         <label>PO<select value={poFilter} onChange={(e) => setPoFilter(e.target.value)}><option value="">All POs</option>{pos.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
         <SegmentedTabs value={range} onChange={setRange} options={[{ value: '30', label: '30 days' }, { value: '90', label: '90 days' }, { value: 'all', label: 'All' }]} ariaLabel="Range" />
-        <button className="button button-secondary" onClick={downloadCsv}>Download CSV</button>
+        <button className="button button-secondary" onClick={downloadHistory}>Download CSV</button>
       </div>
       <section className="panel table-panel full-panel">
         <PanelHeader title="Goods receipt history" subtitle="Receipt numbers, suppliers, quantities, and receiving status" />

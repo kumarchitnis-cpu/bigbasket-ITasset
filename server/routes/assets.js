@@ -545,10 +545,15 @@ router.delete('/:id', requireRole('admin'), (req, res, next) => {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM it_assets WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Asset not found.' });
+    const writeOffs = db.prepare('SELECT * FROM it_write_off_requests WHERE asset_id = ?').all(existing.id);
     db.prepare('DELETE FROM it_maintenance_records WHERE asset_id = ?').run(existing.id);
     db.prepare('DELETE FROM it_asset_events WHERE asset_id = ?').run(existing.id);
+    db.prepare('DELETE FROM it_write_off_requests WHERE asset_id = ?').run(existing.id);
     db.prepare('DELETE FROM it_assets WHERE id = ?').run(existing.id);
-    auditDelete(req.user.id, 'asset', existing.id, existing, { asset_tag: existing.asset_tag });
+    auditDelete(req.user.id, 'asset', existing.id, existing, {
+      asset_tag: existing.asset_tag,
+      dependents: { write_off_requests: writeOffs },
+    });
     res.status(204).end();
   } catch (e) {
     next(e);

@@ -215,6 +215,7 @@ export type DeletedRecord = {
   deleted_by: string | null;
   deleted_at: string;
   restorable: boolean;
+  restored?: boolean;
   restored_at?: string | null;
 };
 

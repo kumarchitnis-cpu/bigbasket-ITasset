@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { ApiError, api, type AppUser } from '@/lib/api';
 import { Asset, InventoryReceipt } from '@/lib/types';
-import { formatDate, groupCount, uniqueSorted } from '@/lib/format';
+import { downloadCsv, formatDate, groupCount, uniqueSorted } from '@/lib/format';
 import { Banner, EmptyState, FilterSelect, MiniStat, PageTitle, PanelHeader, StatStrip, StatusBadge } from '@/components/ui';
 import { HorizontalBars } from '@/components/charts';
 
@@ -60,19 +60,12 @@ export function InventoryView(props: {
   const locations = uniqueSorted(stock.map((a) => a.location));
   const canReceive = ['admin', 'it_asset_manager'].includes(user.role);
   const discrepancyCount = receipts.filter((r) => r.status === 'DISCREPANCY').length;
-  const categoryBars = groupCount(stock, (a) => a.category).map((g) => ({ label: g.key, value: g.count }));
-  const locationBars = groupCount(stock, (a) => a.location).map((g) => ({ label: g.key, value: g.count }));
-  const downloadCsv = () => {
+  const categoryBars = groupCount(stock, (a) => a.category).map((g) => ({ label: g.name, value: g.value }));
+  const locationBars = groupCount(stock, (a) => a.location).map((g) => ({ label: g.name, value: g.value }));
+  const downloadStock = () => {
     const rows: (string | number)[][] = [['Asset Tag', 'Category', 'Manufacturer', 'Model', 'Serial', 'Location']];
     for (const a of filteredStock) rows.push([a.asset_tag, a.category, a.manufacturer, a.model, a.serial_number, a.location]);
-    const csv = rows.map((row) => row.map((v) => `"${String(v ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'inventory-stock.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv('inventory-stock.csv', rows);
   };
   return (
     <div className="fade-in">
@@ -94,7 +87,7 @@ export function InventoryView(props: {
           <option value="">All locations</option>
           {locations.map((l) => <option key={l} value={l}>{l}</option>)}
         </FilterSelect>
-        <button className="button button-secondary" onClick={downloadCsv}>Download CSV</button>
+        <button className="button button-secondary" onClick={downloadStock}>Download CSV</button>
       </div>
       <section className="panel table-panel full-panel">
         <PanelHeader title="Available stock" subtitle="Registered assets ready to assign" />

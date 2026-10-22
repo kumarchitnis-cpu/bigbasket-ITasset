@@ -56,7 +56,7 @@ export function WarrantiesView({ assets, onOpenAssets, onOpenInventory, onOpenAs
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const todayIso = today.toISOString().slice(0, 10);
 
   const reportAssets = useMemo(() => assets.filter((asset) => asset.status !== 'RETIRED'), [assets]);
@@ -112,7 +112,7 @@ export function WarrantiesView({ assets, onOpenAssets, onOpenInventory, onOpenAs
         const from = monthOffset === 0 ? todayIso : month.toISOString().slice(0, 10);
         const to = new Date(nextMonth.getTime() - 86400000).toISOString().slice(0, 10);
         const count = filteredAssets.filter((asset) => asset.warranty_end && asset.warranty_end >= from && asset.warranty_end <= to).length;
-        return { label: month.toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }), count };
+        return { label: month.toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }), value: count, count };
       }),
     [filteredAssets, todayIso],
   );

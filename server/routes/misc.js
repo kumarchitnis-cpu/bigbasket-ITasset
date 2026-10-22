@@ -330,7 +330,7 @@ router.get('/dashboard/metrics', (req, res, next) => {
     const assetRows = db.prepare('SELECT status, warranty_end FROM it_assets').all();
     const invoiceRows = db.prepare('SELECT status, total FROM it_invoices').all();
     const purchaseOrders = db.prepare(
-      'SELECT COUNT(DISTINCT purchase_order) AS count FROM it_invoices WHERE purchase_order IS NOT NULL AND purchase_order != ""',
+      "SELECT COUNT(DISTINCT purchase_order) AS count FROM it_invoices WHERE purchase_order IS NOT NULL AND purchase_order != ''",
     ).get().count;
     const deletedItems = db.prepare(
       "SELECT COUNT(*) AS count FROM app_audit_log WHERE action = 'DELETE' AND outcome = 'SUCCESS'",

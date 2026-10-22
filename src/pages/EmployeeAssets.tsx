@@ -20,6 +20,7 @@ import {
   PageTitle,
   PanelHeader,
   StatStrip,
+  StatusBadge,
 } from '@/components/ui';
 
 export function EmployeeAssetsView(props: {
@@ -216,7 +217,7 @@ export function EmployeeAssetsView(props: {
         {requests.length === 0 && <EmptyState text={canReview ? 'No employee asset requests are waiting.' : 'You have not submitted an asset request yet.'} />}
       </section>
       {requestModalOpen && <EmployeeAssetRequestModal user={user} onClose={() => setRequestModalOpen(false)} onSaved={() => { setRequestModalOpen(false); onSaved(); }} />}
-      {assignmentModalOpen && <EmployeeAssetAssignmentModal assignment={editingAssignment} assets={assets} assignments={assignments} onClose={() => setAssignmentModalOpen(false)} onSaved={(assignment) => { setAssignments((current) => current.some((item) => item.id === assignment.id || item.serial_number === assignment.serial_number) ? current.map((item) => item.id === assignment.id || item.serial_number === assignment.serial_number ? assignment : item) : [...current, assignment].sort((a, b) => a.employee_name.localeCompare(b.employee_name))); setAssignmentModalOpen(false); onSaved(); }} />}
+      {assignmentModalOpen && <EmployeeAssetAssignmentModal assignment={editingAssignment} assets={assets} onClose={() => setAssignmentModalOpen(false)} onSaved={(assignment) => { setAssignments((current) => current.some((item) => item.id === assignment.id || item.serial_number === assignment.serial_number) ? current.map((item) => item.id === assignment.id || item.serial_number === assignment.serial_number ? assignment : item) : [...current, assignment].sort((a, b) => a.employee_name.localeCompare(b.employee_name))); setAssignmentModalOpen(false); onSaved(); }} />}
       {selectedEmployee && <EmployeeProfileDialog assignment={selectedEmployee} assignments={assignments.filter((item) => item.employee_id === selectedEmployee.employee_id)} onClose={() => setSelectedEmployee(null)} onOpenAsset={(assignment) => { setSelectedEmployee(null); setSelectedAssignment(assignment); }} />}
       {selectedAssignment && <EmployeeAssetDetailsDialog assignment={selectedAssignment} asset={assets.find((item) => item.serial_number === selectedAssignment.serial_number)} onClose={() => setSelectedAssignment(null)} />}
     </div>
@@ -249,7 +250,7 @@ function EmployeeAssetDetailsDialog({ assignment, asset, onClose }: { assignment
   );
 }
 
-function EmployeeAssetAssignmentModal({ assignment, assets, assignments, onClose, onSaved }: { assignment: EmployeeAssetAssignment | null; assets: Asset[]; assignments: EmployeeAssetAssignment[]; onClose: () => void; onSaved: (assignment: EmployeeAssetAssignment) => void }) {
+function EmployeeAssetAssignmentModal({ assignment, assets, onClose, onSaved }: { assignment: EmployeeAssetAssignment | null; assets: Asset[]; onClose: () => void; onSaved: (assignment: EmployeeAssetAssignment) => void }) {
   const selectableAssets = assets.filter((asset) => asset.status === 'AVAILABLE' || asset.serial_number === assignment?.serial_number);
   const assetTypes = Array.from(new Set(selectableAssets.map((asset) => asset.category))).sort((a, b) => a.localeCompare(b));
   const currentAsset = assets.find((asset) => asset.serial_number === assignment?.serial_number);

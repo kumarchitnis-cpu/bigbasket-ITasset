@@ -3,7 +3,6 @@ import {
   BadgeCheck,
   Box,
   CircleDollarSign,
-  ClipboardCheck,
   Download,
   FileText,
   Package,
@@ -120,7 +119,7 @@ export function ReportsView({ assets, invoices, requests, receipts, writeOffs, m
   );
 
   const writeOffReasons = useMemo(
-    () => groupCount(writeOffs, (request) => request.reason).slice(0, 8),
+    () => groupCount(writeOffs, (request) => request.reason).slice(0, 8).map((group) => ({ label: group.name, value: group.value })),
     [writeOffs],
   );
 

@@ -8,6 +8,7 @@ import {
   Search,
   Tag,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 
 export function StatusBadge({ status }: { status: string }) {
@@ -33,7 +34,7 @@ export function MetricCard({
   label: string;
   value: string;
   note?: string;
-  icon?: React.ComponentType<{ size?: number }>;
+  icon?: LucideIcon;
   tone?: string;
   trend?: string;
   down?: boolean;
@@ -127,7 +128,7 @@ export function PageTitle({
   title: string;
   copy: string;
   action?: string;
-  icon?: React.ComponentType<{ size?: number }>;
+  icon?: LucideIcon;
   onAction?: () => void;
   children?: ReactNode;
 }) {
@@ -150,7 +151,7 @@ export function PageTitle({
   );
 }
 
-export function EmptyState({ text, icon: Icon = Tag }: { text: string; icon?: React.ComponentType<{ size?: number }> }) {
+export function EmptyState({ text, icon: Icon = Tag }: { text: string; icon?: LucideIcon }) {
   return (
     <div className="empty-state">
       <Icon size={18} />

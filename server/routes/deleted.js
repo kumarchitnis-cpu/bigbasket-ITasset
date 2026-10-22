@@ -58,6 +58,27 @@ function tableForEntity(entityType) {
   }
 }
 
+function restoreDependents(db, entityType, metadata) {
+  const dependents = metadata.dependents && typeof metadata.dependents === 'object' ? metadata.dependents : null;
+  if (!dependents) return;
+  const groups = entityType === 'asset' ? { write_off_requests: 'it_write_off_requests' } : {};
+  for (const [key, table] of Object.entries(groups)) {
+    const rows = Array.isArray(dependents[key]) ? dependents[key] : [];
+    const columns = tableColumns(table);
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      const fields = Object.keys(row).filter((column) => columns.includes(column) && row[column] !== undefined);
+      if (!fields.length) continue;
+      const placeholders = fields.map(() => '?').join(', ');
+      try {
+        db.prepare(`INSERT INTO ${table} (${fields.join(', ')}) VALUES (${placeholders})`).run(...fields.map((field) => row[field]));
+      } catch (error) {
+        if (error && error.code !== 'ERR_SQLITE_ERROR') throw error;
+      }
+    }
+  }
+}
+
 router.get('/', requireRole('admin', 'auditor'), (req, res, next) => {
   try {
     const db = getDb();
@@ -203,6 +224,7 @@ router.post('/restore', requireRole('admin'), (req, res, next) => {
       throw error;
     }
     audit(req.user.id, 'RESTORE', entityType, entityId, 'SUCCESS', null, { restored_from_audit: entry.id });
+    restoreDependents(db, entityType, metadata);
     res.status(201).json({ ok: true, entity_type: entityType, entity_id: entityId });
   } catch (error) {
     next(error);

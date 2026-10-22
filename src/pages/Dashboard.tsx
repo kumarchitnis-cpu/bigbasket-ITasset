@@ -5,7 +5,6 @@ import {
   BadgeCheck,
   Bell,
   Box,
-  BriefcaseBusiness,
   CircleAlert,
   CircleDollarSign,
   ClipboardCheck,
@@ -39,7 +38,6 @@ import {
 } from '@/lib/format';
 import type {
   Asset,
-  DashboardActivity,
   DashboardData,
   DashboardMetrics,
   EmployeeAssetRequest,
