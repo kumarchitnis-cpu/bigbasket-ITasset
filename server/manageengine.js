@@ -13,35 +13,68 @@ export const MANAGEENGINE_SCOPES = [
   'DesktopCentralCloud.Admin.READ',
 ];
 
-export function getManageEngineStatus(env = process.env) {
+// Accept both the documented MANAGEENGINE_* names and the Endpoint Central /
+// Zoho names already used by existing deployments.
+function getCredentials(env) {
   return {
-    configured: Boolean(env.MANAGEENGINE_CLIENT_ID && env.MANAGEENGINE_CLIENT_SECRET && env.MANAGEENGINE_REFRESH_TOKEN),
-    apiBaseUrl: env.MANAGEENGINE_API_BASE_URL || DEFAULT_API_BASE_URL,
-    oauthUrl: env.MANAGEENGINE_OAUTH_URL || DEFAULT_OAUTH_URL,
+    clientId: env.MANAGEENGINE_CLIENT_ID || env.ENDPOINT_CENTRAL_CLIENT_ID,
+    clientSecret: env.MANAGEENGINE_CLIENT_SECRET || env.ENDPOINT_CENTRAL_CLIENT_SECRET,
+    refreshToken: env.MANAGEENGINE_REFRESH_TOKEN || env.ENDPOINT_CENTRAL_REFRESH_TOKEN,
+  };
+}
+
+function getApiBaseUrl(env) {
+  return env.MANAGEENGINE_API_BASE_URL || env.ENDPOINT_CENTRAL_API_URL || DEFAULT_API_BASE_URL;
+}
+
+function getOAuthUrl(env) {
+  const configuredUrl = env.MANAGEENGINE_OAUTH_URL || env.ZOHO_OAUTH_URL || DEFAULT_OAUTH_URL;
+  // Zoho console settings are often copied as the Accounts host only. The
+  // refresh-token endpoint is /oauth/v2/token on that host.
+  const url = new URL(configuredUrl);
+  if (url.pathname === '/' || url.pathname === '') url.pathname = '/oauth/v2/token';
+  return url.toString().replace(/\/$/, '');
+}
+
+export function getManageEngineStatus(env = process.env) {
+  const credentials = getCredentials(env);
+  return {
+    configured: Boolean(credentials.clientId && credentials.clientSecret && credentials.refreshToken),
+    apiBaseUrl: getApiBaseUrl(env),
+    oauthUrl: getOAuthUrl(env),
     requiredScopes: MANAGEENGINE_SCOPES,
     assetWarrantyWriteBackAvailable: false,
   };
 }
 
 async function getAccessToken(env, fetchImpl) {
-  const response = await fetchImpl(env.MANAGEENGINE_OAUTH_URL || DEFAULT_OAUTH_URL, {
+  const credentials = getCredentials(env);
+  const response = await fetchImpl(getOAuthUrl(env), {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      client_id: env.MANAGEENGINE_CLIENT_ID,
-      client_secret: env.MANAGEENGINE_CLIENT_SECRET,
-      refresh_token: env.MANAGEENGINE_REFRESH_TOKEN,
+      client_id: credentials.clientId,
+      client_secret: credentials.clientSecret,
+      refresh_token: credentials.refreshToken,
     }),
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
-    throw integrationError(`ManageEngine OAuth authorization failed (HTTP ${response.status}). Check the server-side OAuth credentials and granted scopes.`);
+    let reason = '';
+    try {
+      const errorResult = await response.json();
+      if (typeof errorResult.error === 'string') reason = ` Zoho error: ${errorResult.error}.`;
+    } catch {
+      // Do not include raw response content: it may contain sensitive data.
+    }
+    throw integrationError(`ManageEngine OAuth authorization failed (HTTP ${response.status}).${reason} Verify the client credentials, refresh token, and Zoho data center.`);
   }
 
   const tokenResult = await response.json();
   if (typeof tokenResult.access_token !== 'string' || !tokenResult.access_token) {
-    throw integrationError('ManageEngine OAuth response did not contain an access token.');
+    const reason = typeof tokenResult.error === 'string' ? ` Zoho error: ${tokenResult.error}.` : '';
+    throw integrationError(`ManageEngine OAuth response did not contain an access token.${reason} Confirm the refresh token is valid for this Zoho client and data center.`);
   }
   return tokenResult.access_token;
 }

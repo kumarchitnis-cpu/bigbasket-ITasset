@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { audit, getDb, newId, nextVal } from '../db.js';
+import { audit, auditDelete, getDb, newId, nextVal } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
 
 const router = Router();
@@ -258,6 +258,19 @@ router.put('/receipts/:id', requireRole('admin', 'it_asset_manager'), (req, res,
 
 // --- Notifications ---------------------------------------------------------
 
+router.delete('/receipts/:id', requireRole('admin'), (req, res, next) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM it_goods_receipts WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Goods receipt not found.' });
+    db.prepare('DELETE FROM it_goods_receipts WHERE id = ?').run(existing.id);
+    auditDelete(req.user.id, 'goods_receipt', existing.id, existing, { receipt_number: existing.receipt_number });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/notifications', (req, res, next) => {
   try {
     res.json(
@@ -273,12 +286,98 @@ router.get('/notifications', (req, res, next) => {
 router.put('/notifications/:id/read', (req, res, next) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT * FROM app_notifications WHERE id = ?').get(req.params.id);
+    const existing = db.prepare('SELECT id FROM app_notifications WHERE id = ?').get(req.params.id);
     if (!existing || existing.recipient_id !== req.user.id) {
       return res.status(404).json({ error: 'Notification not found.' });
     }
     db.prepare(`UPDATE app_notifications SET read_at = datetime('now') WHERE id = ?`).run(existing.id);
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put('/notifications/read-all', (req, res, next) => {
+  try {
+    const result = getDb()
+      .prepare(`UPDATE app_notifications SET read_at = datetime('now') WHERE recipient_id = ? AND read_at IS NULL`)
+      .run(req.user.id);
+    res.json({ ok: true, updated: result.changes });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/notifications/:id', (req, res, next) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM app_notifications WHERE id = ?').get(req.params.id);
+    if (!existing || existing.recipient_id !== req.user.id) {
+      return res.status(404).json({ error: 'Notification not found.' });
+    }
+    db.prepare('DELETE FROM app_notifications WHERE id = ?').run(existing.id);
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Dashboard metrics -----------------------------------------------------
+
+router.get('/dashboard/metrics', (req, res, next) => {
+  try {
+    const db = getDb();
+    const assetRows = db.prepare('SELECT status, warranty_end FROM it_assets').all();
+    const invoiceRows = db.prepare('SELECT status, total FROM it_invoices').all();
+    const purchaseOrders = db.prepare(
+      'SELECT COUNT(DISTINCT purchase_order) AS count FROM it_invoices WHERE purchase_order IS NOT NULL AND purchase_order != ""',
+    ).get().count;
+    const deletedItems = db.prepare(
+      "SELECT COUNT(*) AS count FROM app_audit_log WHERE action = 'DELETE' AND outcome = 'SUCCESS'",
+    ).get().count;
+    const pendingApprovals =
+      db.prepare("SELECT COUNT(*) AS count FROM it_employee_asset_requests WHERE status = 'PENDING_APPROVAL'").get().count +
+      db.prepare("SELECT COUNT(*) AS count FROM it_write_off_requests WHERE status = 'PENDING_APPROVAL'").get().count;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const horizon = new Date(`${today}T00:00:00.000Z`);
+    horizon.setUTCDate(horizon.getUTCDate() + 90);
+    const horizonIso = horizon.toISOString().slice(0, 10);
+
+    let warrantyActive = 0;
+    let warrantyExpiring = 0;
+    let warrantyExpired = 0;
+    let warrantyUnknown = 0;
+    for (const row of assetRows) {
+      if (!row.warranty_end) {
+        warrantyUnknown += 1;
+      } else if (row.warranty_end < today) {
+        warrantyExpired += 1;
+      } else if (row.warranty_end <= horizonIso) {
+        warrantyExpiring += 1;
+      } else {
+        warrantyActive += 1;
+      }
+    }
+
+    res.json({
+      totalAssets: assetRows.length,
+      activeAssets: assetRows.filter((row) => row.status !== 'RETIRED').length,
+      availableAssets: assetRows.filter((row) => row.status === 'AVAILABLE').length,
+      assignedAssets: assetRows.filter((row) => row.status === 'ASSIGNED').length,
+      maintenanceAssets: assetRows.filter((row) => row.status === 'UNDER_MAINTENANCE').length,
+      retiredAssets: assetRows.filter((row) => row.status === 'RETIRED').length,
+      totalInvoices: invoiceRows.length,
+      invoiceSpend: invoiceRows.reduce((sum, row) => sum + Number(row.total || 0), 0),
+      pendingInvoices: invoiceRows.filter((row) => row.status !== 'PROCESSED').length,
+      purchaseOrders,
+      deletedItems,
+      pendingApprovals,
+      warrantyActive,
+      warrantyExpiring,
+      warrantyExpired,
+      warrantyUnknown,
+    });
   } catch (e) {
     next(e);
   }

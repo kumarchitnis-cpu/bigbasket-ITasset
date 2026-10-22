@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { audit, getDb, newId } from '../db.js';
+import { audit, auditDelete, getDb, newId } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
 import { extractRawText } from '../extractor.js';
 
@@ -137,7 +137,7 @@ router.delete('/:id', requireRole('admin'), (req, res, next) => {
     const existing = db.prepare('SELECT * FROM it_invoices WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Invoice not found.' });
     db.prepare('DELETE FROM it_invoices WHERE id = ?').run(existing.id);
-    audit(req.user.id, 'DELETE', 'invoice', existing.id, 'SUCCESS');
+    auditDelete(req.user.id, 'invoice', existing.id, existing, { invoice_number: existing.invoice_number });
     res.status(204).end();
   } catch (e) {
     next(e);

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import XlsxPopulate from 'xlsx-populate';
-import { audit, getDb, newId, nowIso } from '../db.js';
+import { audit, auditDelete, getDb, newId, nowIso } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
 
 const router = Router();
@@ -548,7 +548,7 @@ router.delete('/:id', requireRole('admin'), (req, res, next) => {
     db.prepare('DELETE FROM it_maintenance_records WHERE asset_id = ?').run(existing.id);
     db.prepare('DELETE FROM it_asset_events WHERE asset_id = ?').run(existing.id);
     db.prepare('DELETE FROM it_assets WHERE id = ?').run(existing.id);
-    audit(req.user.id, 'DELETE', 'asset', existing.id, 'SUCCESS');
+    auditDelete(req.user.id, 'asset', existing.id, existing, { asset_tag: existing.asset_tag });
     res.status(204).end();
   } catch (e) {
     next(e);

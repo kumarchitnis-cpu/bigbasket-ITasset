@@ -200,7 +200,7 @@ const workspaceRoles = [
 
 const invoiceStatuses: Invoice['status'][] = ['PENDING', 'UNDER_REVIEW', 'PROCESSED', 'ON_HOLD', 'REJECTED'];
 
-type Tab = 'Overview' | 'Assets' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'User Management';
+type Tab = 'Overview' | 'Assets' | 'Invoices' | 'Emp Asset Mgmt' | 'Inventory' | 'Inventory History' | 'Warranties' | 'Write-Off' | 'Notifications' | 'Settings' | 'AI Assistant' | 'User Management' | 'Deleted' | 'Reports';
 
 const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
   { label: 'Overview', icon: LayoutDashboard },
@@ -209,17 +209,20 @@ const navItems: { label: Tab; icon: typeof LayoutDashboard }[] = [
   { label: 'Assets', icon: Box },
   { label: 'Emp Asset Mgmt', icon: Users },
   { label: 'Inventory', icon: Archive },
+  { label: 'Inventory History', icon: Activity },
   { label: 'Warranties', icon: BadgeCheck },
   { label: 'Write-Off', icon: CircleDollarSign },
   { label: 'Notifications', icon: Bell },
   { label: 'Settings', icon: Settings2 },
   { label: 'User Management', icon: Users },
+  { label: 'Deleted', icon: XCircle },
+  { label: 'Reports', icon: FileText },
 ];
 
 const navGroups: { label: string; items: Tab[] }[] = [
-  { label: 'Workspace', items: ['Overview', 'AI Assistant'] },
-  { label: 'Asset operations', items: ['Assets', 'Emp Asset Mgmt', 'Inventory', 'Invoices', 'Warranties', 'Write-Off'] },
-  { label: 'Administration', items: ['Notifications', 'User Management', 'Settings'] },
+  { label: 'Workspace', items: ['Overview', 'AI Assistant', 'Reports'] },
+  { label: 'Asset operations', items: ['Assets', 'Emp Asset Mgmt', 'Inventory', 'Inventory History', 'Invoices', 'Warranties', 'Write-Off'] },
+  { label: 'Administration', items: ['Notifications', 'User Management', 'Settings', 'Deleted'] },
 ];
 
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -293,11 +296,13 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -316,6 +321,7 @@ function App() {
       const target = event.target as Node;
       if (!searchBoxRef.current?.contains(target)) setSearchOpen(false);
       if (!userMenuRef.current?.contains(target)) setUserMenuOpen(false);
+      if (!notificationMenuRef.current?.contains(target)) setNotificationMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
@@ -325,6 +331,7 @@ function App() {
       } else if (event.key === 'Escape') {
         setSearchOpen(false);
         setUserMenuOpen(false);
+        setNotificationMenuOpen(false);
         setMobileNavOpen(false);
         searchInputRef.current?.blur();
       }
@@ -438,12 +445,12 @@ function App() {
           <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation menu"><X size={18} /></button>
         </div>
         <div className="sidebar-navigation-label">NAVIGATION</div>
-        <div className="sidebar-navigation">{navGroups.map((group) => <section className="nav-group" key={group.label}><div className="nav-section-label">{group.label}</div><nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => group.items.includes(label) && (label !== 'User Management' || user.role === 'admin')).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label === 'Emp Asset Mgmt' ? 'Employee assets' : label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav></section>)}</div>
+        <div className="sidebar-navigation">{navGroups.map((group) => <section className="nav-group" key={group.label}><div className="nav-section-label">{group.label}</div><nav className="main-nav sidebar-nav">{navItems.filter(({ label }) => group.items.includes(label) && (label !== 'User Management' || user.role === 'admin') && (label !== 'Deleted' || ['admin', 'auditor'].includes(user.role))).map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeTab === label ? 'active' : ''}`} aria-current={activeTab === label ? 'page' : undefined} onClick={() => showTab(label)}><Icon size={18} /><span>{label === 'Emp Asset Mgmt' ? 'Employee assets' : label === 'Overview' ? 'Dashboard' : label}</span>{label === 'Invoices' && metrics.invoiceExceptions > 0 && <span className="nav-count">{metrics.invoiceExceptions}</span>}{label === 'Notifications' && metrics.unreadNotifications > 0 && <span className="nav-count">{metrics.unreadNotifications}</span>}</button>)}</nav></section>)}</div>
         <div className="sidebar-bottom"><div className="profile-row"><div className="avatar avatar-dark">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel(user.role)}</span></div><button className="more-dots" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button></div></div>
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><button className="navigation-menu-button" aria-label="Open navigation menu" aria-controls="workspace-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}><Menu size={21} /><span>Menu</span></button><div className="breadcrumbs"><span>Operations</span><span className="crumb-divider">/</span><strong>{activeTab}</strong></div><div className="topbar-actions"><button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI"><Sparkles size={16} /><span>Ask, navigate, or implement…</span><kbd>AI</kbd></button><div className="global-search-wrap" ref={searchBoxRef}><div className={`global-search ${searchOpen ? 'search-active' : ''}`}><button type="button" className="search-trigger" aria-label="Open workspace search" onClick={() => setSearchOpen(true)}><Search size={17} /></button><input ref={searchInputRef} value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && searchResults[0]) { showTab(searchResults[0].tab); setSearchOpen(false); } }} placeholder="Search assets and invoices..." aria-label="Search workspace" aria-expanded={searchOpen} aria-controls="workspace-search-results" /><kbd>Ctrl K</kbd>{query && <button className="search-clear" aria-label="Clear search" onClick={() => { setQuery(''); setSearchOpen(true); searchInputRef.current?.focus(); }}><X size={14} /></button>}</div>{searchOpen && query.trim() && <div className="search-results" id="workspace-search-results" role="listbox" aria-label="Workspace search results">{searchResults.map(({ id, title, detail, tab, icon: Icon }) => <button key={id} role="option" aria-selected="false" onClick={() => { setQuery(query.trim()); showTab(tab); setSearchOpen(false); }}><span className="search-result-icon"><Icon size={15} /></span><span className="search-result-copy"><strong>{title}</strong><small>{detail}</small></span><span className="search-result-type">{tab}</span></button>)}{searchResults.length === 0 && <div className="search-no-results">No matching assets or invoices.</div>}</div>}</div><button className="icon-button notification-button" aria-label="Notifications" onClick={() => showTab('Notifications')}><Bell size={19} />{metrics.unreadNotifications > 0 && <span></span>}</button><div className="user-menu-wrap" ref={userMenuRef}><button className="user-menu-trigger" aria-label={`User menu for ${user.full_name}`} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}><span className="avatar avatar-light">{initials(user.full_name)}</span><ChevronDown size={13} /></button>{userMenuOpen && <div className="user-menu-popover"><div className="user-menu-heading"><strong>{user.full_name}</strong><span>{user.email}</span><small>{roleLabel(user.role)}</small></div><button onClick={() => { setUserMenuOpen(false); showTab('Settings'); }}><Settings2 size={15} /> Account settings</button>{user.role === 'admin' && <button onClick={() => { setUserMenuOpen(false); showTab('User Management'); }}><Users size={15} /> User management</button>}<button className="user-menu-signout" onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header>
+        <header className="topbar"><button className="navigation-menu-button" aria-label="Open navigation menu" aria-controls="workspace-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}><Menu size={21} /><span>Menu</span></button><div className="breadcrumbs"><button type="button" className="breadcrumb-home" onClick={() => showTab('Overview')} aria-label="Go to Home page">Operations</button><span className="crumb-divider">/</span><strong>{activeTab === 'Overview' ? 'Dashboard' : activeTab}</strong></div><div className="topbar-actions"><button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI"><Sparkles size={16} /><span>Ask, navigate, or implement…</span><kbd>AI</kbd></button><div className="global-search-wrap" ref={searchBoxRef}><div className={`global-search ${searchOpen ? 'search-active' : ''}`}><button type="button" className="search-trigger" aria-label="Open workspace search" onClick={() => setSearchOpen(true)}><Search size={17} /></button><input ref={searchInputRef} value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && searchResults[0]) { showTab(searchResults[0].tab); setSearchOpen(false); } }} placeholder="Search assets and invoices..." aria-label="Search workspace" aria-expanded={searchOpen} aria-controls="workspace-search-results" /><kbd>Ctrl K</kbd>{query && <button className="search-clear" aria-label="Clear search" onClick={() => { setQuery(''); setSearchOpen(true); searchInputRef.current?.focus(); }}><X size={14} /></button>}</div>{searchOpen && query.trim() && <div className="search-results" id="workspace-search-results" role="listbox" aria-label="Workspace search results">{searchResults.map(({ id, title, detail, tab, icon: Icon }) => <button key={id} role="option" aria-selected="false" onClick={() => { setQuery(query.trim()); showTab(tab); setSearchOpen(false); }}><span className="search-result-icon"><Icon size={15} /></span><span className="search-result-copy"><strong>{title}</strong><small>{detail}</small></span><span className="search-result-type">{tab}</span></button>)}{searchResults.length === 0 && <div className="search-no-results">No matching assets or invoices.</div>}</div>}</div><div className="notification-menu-wrap" ref={notificationMenuRef}><button className="icon-button notification-button" aria-label="Notifications" aria-expanded={notificationMenuOpen} aria-haspopup="true" onClick={() => { setNotificationMenuOpen((open) => !open); setUserMenuOpen(false); }}><Bell size={19} />{metrics.unreadNotifications > 0 && <span></span>}</button>{notificationMenuOpen && <div className="notification-popover" role="dialog" aria-label="Notifications"><div className="notification-popover-heading">Notifications</div>{notifications.length ? notifications.slice(0, 5).map((notification) => <button className="notification-popover-item" key={notification.id} onClick={() => { setNotificationMenuOpen(false); showTab('Notifications'); }}><strong>{notification.title}</strong><small>{formatRelativeTime(notification.created_at)}</small></button>) : <div className="notification-popover-empty">You have no notifications yet.</div>}</div>}</div><div className="user-menu-wrap" ref={userMenuRef}><button className="user-menu-trigger" aria-label={`User menu for ${user.full_name}`} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}><span className="avatar avatar-light">{initials(user.full_name)}</span><ChevronDown size={13} /></button>{userMenuOpen && <div className="user-menu-popover"><div className="user-menu-heading"><strong>{user.full_name}</strong><span>{user.email}</span><small>{roleLabel(user.role)}</small></div><button onClick={() => { setUserMenuOpen(false); showTab('Settings'); }}><Settings2 size={15} /> Account settings</button>{user.role === 'admin' && <button onClick={() => { setUserMenuOpen(false); showTab('User Management'); }}><Users size={15} /> User management</button>}<button className="user-menu-signout" onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header>
 
         <div className="page-content">
           {activeTab === 'Settings' ? <SettingsView user={user} onSaved={setUser} /> : loading ? <LoadingState /> : error ? <ErrorState onRetry={() => void loadData()} /> : <>
@@ -452,10 +459,13 @@ function App() {
             {activeTab === 'Invoices' && <InvoicesView invoices={invoices} user={user} query={query} onSaved={() => void loadData(true)} />}
             {activeTab === 'Emp Asset Mgmt' && <EmployeeAssetsView requests={employeeRequests} assets={assets} user={user} onSaved={() => void loadData(true)} />}
             {activeTab === 'Inventory' && <InventoryView assets={assets} receipts={inventoryReceipts} user={user} onSaved={() => void loadData(true)} />}
+            {activeTab === 'Inventory History' && <InventoryHistoryView receipts={inventoryReceipts} />}
             {activeTab === 'Warranties' && <WarrantiesView assets={assets} onOpenAssets={() => showTab('Assets')} onOpenInventory={() => showTab('Inventory')} onOpenAsset={(asset) => { setQuery(asset.asset_tag); setPendingAssetId(asset.id); showTab('Assets'); }} />}
             {activeTab === 'Write-Off' && <WriteOffView assets={assets} requests={writeOffRequests} user={user} onSaved={() => void loadData(true)} />}
             {activeTab === 'Notifications' && <NotificationsView notifications={notifications} onRead={async (id) => { await api.put(`/api/notifications/${id}/read`, {}); setNotifications((current) => current.map((notification) => notification.id === id ? { ...notification, read_at: new Date().toISOString() } : notification)); }} />}
             {activeTab === 'User Management' && user.role === 'admin' && <UserManagementView currentUser={user} />}
+            {activeTab === 'Reports' && <ReportsView assets={assets} invoices={invoices} requests={employeeRequests} receipts={inventoryReceipts} writeOffs={writeOffRequests} />}
+            {activeTab === 'Deleted' && ['admin', 'auditor'].includes(user.role) && <DeletedRecordsView />}
             {activeTab === 'AI Assistant' && <AssistantView onNavigate={showTab} />}
           </>}
         </div>
@@ -955,6 +965,78 @@ function InventoryView({ assets, receipts, user, onSaved }: { assets: Asset[]; r
     <section className="panel table-panel full-panel"><PanelHeader title="Available stock" subtitle="Registered assets ready to assign" /><AssetTable assets={stock} /></section>
     <section className="panel table-panel full-panel module-panel-gap"><PanelHeader title="Recent goods receipts" subtitle="Received and accepted quantities recorded against purchase orders" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Receipt</th><th>Purchase order</th><th>Supplier</th><th>Received</th><th>Accepted / ordered</th><th>Status</th></tr></thead><tbody>{receipts.map((receipt) => <tr key={receipt.id}><td><strong>{receipt.receipt_number}</strong></td><td>{receipt.purchase_order}</td><td>{receipt.vendor}</td><td>{formatDate(receipt.received_date)}</td><td>{receipt.accepted_quantity} / {receipt.ordered_quantity}</td><td><StatusBadge status={receipt.status} /></td></tr>)}</tbody></table>{receipts.length === 0 && <EmptyState text="No goods receipts recorded yet." />}</div></section>
     {receiptModalOpen && <GoodsReceiptModal onClose={() => setReceiptModalOpen(false)} onSaved={() => { setReceiptModalOpen(false); onSaved(); }} />}
+  </div>;
+}
+
+function InventoryHistoryView({ receipts }: { receipts: InventoryReceipt[] }) {
+  return <div className="fade-in">
+    <PageTitle eyebrow="Inventory / Audit trail" title="Inventory History" copy="A complete timeline of goods received against purchase orders." />
+    <div className="stat-strip"><MiniStat label="Receipts recorded" value={receipts.length.toLocaleString()} tone="blue" /><MiniStat label="Units accepted" value={receipts.reduce((sum, receipt) => sum + receipt.accepted_quantity, 0).toLocaleString()} tone="teal" /><MiniStat label="Units rejected" value={receipts.reduce((sum, receipt) => sum + receipt.rejected_quantity, 0).toLocaleString()} tone="amber" /></div>
+    <section className="panel table-panel full-panel"><PanelHeader title="Goods receipt history" subtitle="Receipt numbers, suppliers, quantities, and receiving status" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Receipt</th><th>Purchase order</th><th>Supplier</th><th>Received</th><th>Accepted</th><th>Rejected</th><th>Ordered</th><th>Status</th></tr></thead><tbody>{receipts.map((receipt) => <tr key={receipt.id}><td><strong>{receipt.receipt_number}</strong></td><td>{receipt.purchase_order}</td><td>{receipt.vendor}</td><td>{formatDate(receipt.received_date)}</td><td>{receipt.accepted_quantity}</td><td>{receipt.rejected_quantity}</td><td>{receipt.ordered_quantity}</td><td><StatusBadge status={receipt.status} /></td></tr>)}</tbody></table>{receipts.length === 0 && <EmptyState text="Goods receipt history will appear here." />}</div></section>
+  </div>;
+}
+
+function downloadCsv(filename: string, rows: (string | number)[][]) {
+  const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function ReportsView({ assets, invoices, requests, receipts, writeOffs }: { assets: Asset[]; invoices: Invoice[]; requests: EmployeeAssetRequest[]; receipts: InventoryReceipt[]; writeOffs: WriteOffRequest[] }) {
+  const activeAssets = assets.filter((asset) => asset.status !== 'RETIRED');
+  const warrantyCounts = {
+    active: activeAssets.filter((asset) => warrantyStatus(asset) === 'ACTIVE').length,
+    expiring: activeAssets.filter((asset) => warrantyStatus(asset) === 'EXPIRING').length,
+    expired: activeAssets.filter((asset) => warrantyStatus(asset) === 'EXPIRED').length,
+    unknown: activeAssets.filter((asset) => warrantyStatus(asset) === 'UNKNOWN').length,
+  };
+  const pendingInvoices = invoices.filter((invoice) => ['PENDING', 'UNDER_REVIEW', 'ON_HOLD'].includes(invoice.status));
+  const pendingRequests = requests.filter((request) => request.status === 'PENDING_APPROVAL').length;
+  const pendingWriteOffs = writeOffs.filter((request) => request.status === 'PENDING_APPROVAL').length;
+  const exportReport = () => {
+    const rows: (string | number)[][] = [['Report', 'Metric', 'Value'],
+      ['Assets', 'Total registered', assets.length], ['Assets', 'Active', activeAssets.length],
+      ['Assets', 'Available', assets.filter((asset) => asset.status === 'AVAILABLE').length],
+      ['Assets', 'Assigned', assets.filter((asset) => asset.status === 'ASSIGNED').length],
+      ['Assets', 'Retired', assets.filter((asset) => asset.status === 'RETIRED').length],
+      ['Warranties', 'Active', warrantyCounts.active], ['Warranties', 'Expiring in 30 days', warrantyCounts.expiring],
+      ['Warranties', 'Expired', warrantyCounts.expired], ['Warranties', 'Unknown', warrantyCounts.unknown],
+      ['Invoices', 'Total records', invoices.length], ['Invoices', 'Pending review', pendingInvoices.length],
+      ['Invoices', 'Total spend', invoices.reduce((sum, invoice) => sum + invoice.total, 0)],
+      ['Employee assets', 'Pending requests', pendingRequests], ['Write-offs', 'Pending approvals', pendingWriteOffs],
+      ['Inventory', 'Goods receipts', receipts.length], ['Inventory', 'Accepted units', receipts.reduce((sum, receipt) => sum + receipt.accepted_quantity, 0)],
+    ];
+    downloadCsv(`bigbasket-itam-report-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+  return <div className="fade-in">
+    <PageTitle eyebrow="Workspace / Analytics" title="Reports" copy="Current asset, spend, warranty, and workflow summaries." action="Export CSV" icon={Download} onAction={exportReport} />
+    <div className="metric-grid"><MetricCard label="Registered assets" value={assets.length.toLocaleString()} note={`${activeAssets.length} active`} icon={Box} tone="blue" /><MetricCard label="Invoice value" value={compactMoney.format(invoices.reduce((sum, invoice) => sum + invoice.total, 0))} note={`${pendingInvoices.length} need review`} icon={FileText} tone="teal" /><MetricCard label="Warranty attention" value={(warrantyCounts.expiring + warrantyCounts.expired).toLocaleString()} note={`${warrantyCounts.expiring} expiring · ${warrantyCounts.expired} expired`} icon={BadgeCheck} tone="amber" /><MetricCard label="Pending approvals" value={(pendingRequests + pendingWriteOffs).toLocaleString()} note={`${pendingRequests} employee · ${pendingWriteOffs} write-off`} icon={ClipboardCheck} tone="blue" /></div>
+    <div className="dashboard-reference-grid">
+      <section className="panel table-panel"><PanelHeader title="Asset status" subtitle="Registered assets by lifecycle status" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Status</th><th>Assets</th></tr></thead><tbody>{(['ASSIGNED', 'AVAILABLE', 'UNDER_MAINTENANCE', 'QUARANTINED', 'RETIRED'] as Asset['status'][]).map((status) => <tr key={status}><td><StatusBadge status={status} /></td><td>{assets.filter((asset) => asset.status === status).length}</td></tr>)}</tbody></table></div></section>
+      <section className="panel table-panel"><PanelHeader title="Warranty outlook" subtitle="Coverage across non-retired assets" /><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Coverage</th><th>Assets</th></tr></thead><tbody><tr><td>Active</td><td>{warrantyCounts.active}</td></tr><tr><td>Expiring in 30 days</td><td>{warrantyCounts.expiring}</td></tr><tr><td>Expired</td><td>{warrantyCounts.expired}</td></tr><tr><td>Not recorded</td><td>{warrantyCounts.unknown}</td></tr></tbody></table></div></section>
+    </div>
+  </div>;
+}
+
+type AuditEntry = { id: string; action: string; entity_type: string; entity_id: string; actor_name: string | null; created_at: string; outcome: string };
+
+function DeletedRecordsView() {
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    api.get<AuditEntry[]>('/api/audit')
+      .then((rows) => setEntries(rows.filter((row) => row.action === 'DELETE' && row.outcome === 'SUCCESS')))
+      .catch((cause: unknown) => setError(cause instanceof ApiError ? cause.message : 'Could not load deleted record history.'))
+      .finally(() => setLoading(false));
+  }, []);
+  return <div className="fade-in">
+    <PageTitle eyebrow="Administration / Audit" title="Deleted Records" copy="Successful deletions recorded in the audit log." />
+    <section className="panel table-panel full-panel"><PanelHeader title="Deletion history" subtitle="Audit entries include deletions from the most recent 500 actions" />{loading ? <LoadingState /> : error ? <div className="history-error">{error}</div> : <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Record type</th><th>Record ID</th><th>Deleted by</th><th>Date</th></tr></thead><tbody>{entries.map((entry) => <tr key={entry.id}><td>{formatActivity(entry.entity_type)}</td><td><code>{entry.entity_id}</code></td><td>{entry.actor_name || 'Former user'}</td><td>{formatDateTime(entry.created_at)}</td></tr>)}</tbody></table>{entries.length === 0 && <EmptyState text="No deletion events are present in the audit history." />}</div>}</section>
   </div>;
 }
 
@@ -1669,6 +1751,19 @@ function assetEventDescription(event: AssetEvent) {
 function formatDateTime(value: string) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+}
+
+function formatRelativeTime(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const months = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24 * 30.4375)));
+  if (months >= 1) return `${months} month${months === 1 ? '' : 's'} ago`;
+  const days = Math.floor((Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24));
+  if (days >= 1) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const hours = Math.floor((Date.now() - parsed.getTime()) / (1000 * 60 * 60));
+  if (hours >= 1) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const minutes = Math.floor((Date.now() - parsed.getTime()) / (1000 * 60));
+  return minutes >= 1 ? `${minutes} minute${minutes === 1 ? '' : 's'} ago` : 'Just now';
 }
 
 function InvoiceTable({ invoices, compact = false, canManage = false, canDelete = false, onStatusChange, onDelete, onDownload }: { invoices: Invoice[]; compact?: boolean; canManage?: boolean; canDelete?: boolean; onStatusChange?: (invoice: Invoice, status: Invoice['status']) => void; onDelete?: (invoice: Invoice) => void; onDownload?: (invoice: Invoice) => void }) {

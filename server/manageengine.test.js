@@ -18,6 +18,20 @@ test('reports integration readiness without exposing OAuth credentials', () => {
   assert.equal(JSON.stringify(status).includes('client-secret'), false);
 });
 
+test('recognizes the Endpoint Central and Zoho environment names', () => {
+  const status = getManageEngineStatus({
+    ENDPOINT_CENTRAL_CLIENT_ID: 'client-id',
+    ENDPOINT_CENTRAL_CLIENT_SECRET: 'client-secret',
+    ENDPOINT_CENTRAL_REFRESH_TOKEN: 'refresh-token',
+    ENDPOINT_CENTRAL_API_URL: 'https://endpointcentral.example.com',
+    ZOHO_OAUTH_URL: 'https://accounts.zoho.com/oauth/v2/token',
+  });
+
+  assert.equal(status.configured, true);
+  assert.equal(status.apiBaseUrl, 'https://endpointcentral.example.com');
+  assert.equal(status.oauthUrl, 'https://accounts.zoho.com/oauth/v2/token');
+});
+
 test('requires OAuth credentials before attempting a connection', async () => {
   await assert.rejects(
     testManageEngineConnection({ env: {}, fetchImpl: async () => assert.fail('Must not call fetch without credentials.') }),

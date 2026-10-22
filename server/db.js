@@ -50,6 +50,10 @@ export function audit(actorId, action, entityType, entityId, outcome = 'SUCCESS'
   }
 }
 
+export function auditDelete(actorId, entityType, entityId, snapshot, metadata = {}) {
+  audit(actorId, 'DELETE', entityType, entityId, 'SUCCESS', null, { ...metadata, snapshot });
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -277,6 +281,13 @@ export function ensureSchema() {
   }
   if (!invoiceColumns.has('document_id')) {
     db.exec('ALTER TABLE it_invoices ADD COLUMN document_id TEXT');
+  }
+  const writeOffColumns = new Set(db.prepare('PRAGMA table_info(it_write_off_requests)').all().map((column) => column.name));
+  if (!writeOffColumns.has('write_off_date')) {
+    db.exec('ALTER TABLE it_write_off_requests ADD COLUMN write_off_date TEXT');
+  }
+  if (!writeOffColumns.has('approved_by')) {
+    db.exec('ALTER TABLE it_write_off_requests ADD COLUMN approved_by TEXT');
   }
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('goods_receipt', 0)").run();
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('employee_asset_request', 0)").run();

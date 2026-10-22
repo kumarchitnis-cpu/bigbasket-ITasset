@@ -11,6 +11,7 @@ import { assistantRouter } from './routes/assistant.js';
 import { usersRouter } from './routes/users.js';
 import { settingsRouter } from './routes/settings.js';
 import { integrationsRouter } from './routes/integrations.js';
+import { deletedRouter } from './routes/deleted.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -32,6 +33,7 @@ app.use('/api/assistant', assistantRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/integrations', integrationsRouter);
+app.use('/api/deleted', deletedRouter);
 app.use('/api', miscRouter);
 
 app.use((err, req, res, next) => {

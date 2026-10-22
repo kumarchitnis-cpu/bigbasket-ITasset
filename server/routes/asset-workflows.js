@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import XlsxPopulate from 'xlsx-populate';
-import { audit, getDb, newId, nextVal, nowIso, notify } from '../db.js';
+import { audit, auditDelete, getDb, newId, nextVal, nowIso, notify } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
 
 const router = Router();
@@ -143,7 +143,10 @@ router.delete('/employee-assignments/:id', requireRole(...assignmentRoles), (req
     const existing = db.prepare('SELECT id FROM it_employee_asset_assignments WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Employee asset assignment not found.' });
     db.prepare('DELETE FROM it_employee_asset_assignments WHERE id = ?').run(existing.id);
-    audit(req.user.id, 'DELETE', 'employee_asset_assignment', existing.id, 'SUCCESS');
+    auditDelete(req.user.id, 'employee_asset_assignment', existing.id, existing, {
+      employee_name: existing.employee_name,
+      serial_number: existing.serial_number,
+    });
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -257,6 +260,12 @@ router.post('/write-offs', requireRole('admin', 'it_asset_manager'), (req, res, 
     const assetId = typeof req.body?.asset_id === 'string' ? req.body.asset_id : '';
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
     if (!assetId || !reason) return res.status(400).json({ error: 'An asset and write-off reason are required.' });
+    const writeOffDate = typeof req.body?.write_off_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.body.write_off_date)
+      ? req.body.write_off_date
+      : null;
+    const approvedBy = typeof req.body?.approved_by === 'string' && req.body.approved_by.trim()
+      ? req.body.approved_by.trim()
+      : null;
     const db = getDb();
     const asset = db.prepare('SELECT * FROM it_assets WHERE id = ?').get(assetId);
     if (!asset) return res.status(404).json({ error: 'Asset not found.' });
@@ -267,9 +276,9 @@ router.post('/write-offs', requireRole('admin', 'it_asset_manager'), (req, res, 
     const id = newId();
     try {
       db.prepare(
-      `INSERT INTO it_write_off_requests (id, asset_id, requester_id, reason, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run(id, assetId, req.user.id, reason, nowIso(), nowIso());
+      `INSERT INTO it_write_off_requests (id, asset_id, requester_id, reason, write_off_date, approved_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, assetId, req.user.id, reason, writeOffDate, approvedBy, nowIso(), nowIso());
     } catch (e) {
       if (e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
         return res.status(409).json({ error: 'This asset already has a write-off request awaiting review.' });
@@ -281,6 +290,53 @@ router.post('/write-offs', requireRole('admin', 'it_asset_manager'), (req, res, 
     }
     audit(req.user.id, 'CREATE', 'write_off_request', id, 'SUCCESS');
     res.status(201).json(db.prepare('SELECT * FROM it_write_off_requests WHERE id = ?').get(id));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put('/write-offs/:id', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM it_write_off_requests WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Write-off request not found.' });
+    const body = req.body ?? {};
+    const updates = {};
+    if ('reason' in body) {
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+      if (!reason) return res.status(400).json({ error: 'A write-off reason is required.' });
+      updates.reason = reason;
+    }
+    if ('write_off_date' in body) {
+      const value = body.write_off_date;
+      if (value && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+        return res.status(400).json({ error: 'Enter a valid write-off date.' });
+      }
+      updates.write_off_date = value || null;
+    }
+    if ('approved_by' in body) {
+      updates.approved_by = typeof body.approved_by === 'string' && body.approved_by.trim() ? body.approved_by.trim() : null;
+    }
+    const keys = Object.keys(updates);
+    if (keys.length) {
+      db.prepare(`UPDATE it_write_off_requests SET ${keys.map((key) => `${key} = ?`).join(', ')}, updated_at = ? WHERE id = ?`)
+        .run(...keys.map((key) => updates[key]), nowIso(), existing.id);
+    }
+    audit(req.user.id, 'UPDATE', 'write_off_request', existing.id, 'SUCCESS');
+    res.json(db.prepare('SELECT * FROM it_write_off_requests WHERE id = ?').get(existing.id));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/write-offs/:id', requireRole('admin'), (req, res, next) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM it_write_off_requests WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Write-off request not found.' });
+    db.prepare('DELETE FROM it_write_off_requests WHERE id = ?').run(existing.id);
+    auditDelete(req.user.id, 'write_off_request', existing.id, existing, { reason: existing.reason });
+    res.status(204).end();
   } catch (e) {
     next(e);
   }
@@ -318,11 +374,13 @@ router.put('/write-offs/:id/review', requireRole('admin'), (req, res, next) => {
       transactionStarted = false;
       return res.status(409).json({ error: 'The asset can no longer be written off.' });
     }
+    const reviewer = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user.id);
     const result = db.prepare(
       `UPDATE it_write_off_requests
-       SET status = ?, reviewer_id = ?, review_note = ?, reviewed_at = ?, updated_at = ?
+       SET status = ?, reviewer_id = ?, review_note = ?, reviewed_at = ?, updated_at = ?,
+           approved_by = COALESCE(approved_by, ?)
        WHERE id = ? AND status = 'PENDING_APPROVAL'`,
-    ).run(decision, req.user.id, note, now, now, lockedRequest.id);
+    ).run(decision, req.user.id, note, now, now, reviewer?.full_name ?? null, lockedRequest.id);
     if (result.changes !== 1) {
       db.exec('ROLLBACK');
       transactionStarted = false;
