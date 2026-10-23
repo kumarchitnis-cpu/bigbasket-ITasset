@@ -634,9 +634,29 @@ button { cursor: pointer; }
 .notification-popover-item strong { color: #303b47; font-size: 13px; font-weight: 600; }
 .notification-popover-item small { color: #74869b; font-size: 11px; }
 .notification-popover-empty { padding: 18px 12px; color: #74869b; font-size: 12px; }
-.breadcrumb-home { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.breadcrumb-home { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: #607b91; font: inherit; cursor: pointer; white-space: nowrap; }
 .breadcrumb-home:hover { color: #203b54; }
 .breadcrumb-home:focus-visible { outline: 2px solid #4d8992; outline-offset: 3px; border-radius: 2px; }
+.inventory-row-action { height: 29px; padding: 0 9px; font-size: 10px; }
+.inventory-barcode-status { padding: 5px 9px; border: 0; border-radius: 999px; font-size: 9px; font-weight: 700; }
+.inventory-barcode-status.created { color: #2f8277; background: #e5f3ef; }
+.inventory-barcode-status.created:hover { background: #d7eee7; }
+.inventory-barcode-status.missing { color: #9a6c26; background: #fbf1df; }
+.inventory-barcode-status.missing:hover { background: #f7e8c8; }
+.inventory-single-print { display: flex; justify-content: center; }
+.inventory-asset-select { display: grid; gap: 7px; color: #587183; font-size: 11px; font-weight: 700; }
+.inventory-asset-select select { min-width: 0; height: 38px; padding: 0 10px; border: 1px solid #dfe7eb; border-radius: 7px; color: #38586d; background: #fff; font-size: 11px; }
+.inventory-barcode-modal { width: min(560px, 100%); }
+.inventory-barcode-preview { display: flex; justify-content: center; margin-top: 18px; padding: 20px; border: 1px dashed #d5e0e5; border-radius: 8px; background: #f8fafb; }
+.inventory-created-panel { margin-bottom: 16px; padding-bottom: 18px; }
+.inventory-label-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 18px 14px; }
+.barcode-print-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 0 18px; }
+.inventory-asset-label { display: grid; justify-items: center; gap: 5px; min-width: 210px; padding: 14px 12px; border: 1px solid #dfe7eb; border-radius: 7px; color: #294459; background: #fff; font-size: 10px; text-align: center; }
+.inventory-asset-label > strong { font-size: 12px; }
+.inventory-asset-label > span, .inventory-asset-label small { color: #718797; font-size: 9px; }
+.inventory-asset-label > b { font-size: 10px; }
+.inventory-qr { display: block; width: 100px; height: 100px; margin: 5px auto 2px; shape-rendering: crispEdges; }
+.inventory-qr-overflow { color: #9a4a3d; font-size: 9px; }
 
 /* ==========================================================================
    Module refactor additions — shared primitives for src/pages and src/components
@@ -768,4 +788,12 @@ button.assistant-capability:hover { border-color: #c6dadd; background: #f6fbfb; 
   .asset-summary-row { grid-template-columns: minmax(0, 1fr); }
   .dashboard-quick-grid { grid-template-columns: minmax(0, 1fr); }
   .dashboard-chart-split { justify-content: center; }
+}
+@media print {
+  body:has(.barcode-print-sheet) * { visibility: hidden !important; }
+  body:has(.barcode-print-sheet) .barcode-print-sheet,
+  body:has(.barcode-print-sheet) .barcode-print-sheet * { visibility: visible !important; }
+  .barcode-print-sheet { position: fixed; inset: 0; grid-template-columns: repeat(3, 1fr); align-content: start; gap: 8mm; padding: 0; }
+  .inventory-created-panel { border: 0; box-shadow: none; }
+  .inventory-asset-label { break-inside: avoid; border: 1px solid #9aa8b0; border-radius: 0; }
 }

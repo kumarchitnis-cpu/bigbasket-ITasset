@@ -5,6 +5,8 @@ export type AssetStatus = 'ASSIGNED' | 'AVAILABLE' | 'UNDER_MAINTENANCE' | 'QUAR
 export type Asset = {
   id: string;
   asset_tag: string;
+  barcode_value?: string | null;
+  barcode_created_at?: string | null;
   category: string;
   manufacturer: string;
   model: string;

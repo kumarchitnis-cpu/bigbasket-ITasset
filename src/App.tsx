@@ -8,7 +8,9 @@ import {
   Box,
   ChevronDown,
   CircleDollarSign,
+  ChevronRight,
   FileText,
+  House,
   LayoutDashboard,
   Loader2,
   LogOut,
@@ -549,11 +551,16 @@ function App() {
             <span>Menu</span>
           </button>
           <div className="breadcrumbs">
-            <button type="button" className="breadcrumb-home" onClick={() => showTab('Dashboard')} aria-label="Go to Home page">
-              Operations
+            <button type="button" className="breadcrumb-home" onClick={() => showTab('Dashboard')} aria-label="Go to Dashboard">
+              <House size={15} aria-hidden="true" />
+              <span>Dashboard</span>
             </button>
-            <span className="crumb-divider">/</span>
-            <strong>{navLabels[activeTab]}</strong>
+            {activeTab !== 'Dashboard' && (
+              <>
+                <ChevronRight className="crumb-divider" size={15} aria-hidden="true" />
+                <strong aria-current="page">{navLabels[activeTab]}</strong>
+              </>
+            )}
           </div>
           <div className="topbar-actions">
             <button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI">

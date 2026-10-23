@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import XlsxPopulate from 'xlsx-populate';
-import { audit, auditDelete, getDb, newId, nowIso } from '../db.js';
+import { audit, auditDelete, getDb, newId, nextVal, nowIso } from '../db.js';
 import { requireAuth, requireRole } from '../rbac.js';
 
 const router = Router();
@@ -449,6 +449,52 @@ router.post('/:id/events', requireRole('admin', 'it_asset_manager'), (req, res, 
       return res.status(409).json({ error: 'An asset tag was registered during this upload. No assets were imported; please retry.' });
     }
     next(e);
+  }
+});
+
+router.post('/barcodes/bulk', requireRole('admin', 'it_asset_manager'), (req, res, next) => {
+  const assetIds = Array.isArray(req.body?.asset_ids) ? [...new Set(req.body.asset_ids.map(String))] : [];
+  if (!assetIds.length || assetIds.length > 1000) {
+    return res.status(400).json({ error: 'Select between 1 and 1000 available assets.' });
+  }
+
+  const db = getDb();
+  const now = nowIso();
+  let transactionStarted = false;
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    transactionStarted = true;
+    const findAsset = db.prepare('SELECT * FROM it_assets WHERE id = ? AND status = \'AVAILABLE\'');
+    const findTag = db.prepare('SELECT 1 FROM it_assets WHERE asset_tag = ?');
+    const updateAsset = db.prepare('UPDATE it_assets SET asset_tag = ?, barcode_value = ?, barcode_created_at = ?, updated_at = ? WHERE id = ?');
+    const updated = [];
+
+    for (const id of assetIds) {
+      const asset = findAsset.get(id);
+      if (!asset) continue;
+      let assetTag = String(asset.asset_tag ?? '').trim();
+      if (!assetTag) {
+        do {
+          assetTag = `BBIT-${String(nextVal('asset_tag')).padStart(6, '0')}`;
+        } while (findTag.get(assetTag));
+      }
+      const barcodeValue = assetTag;
+      if (asset.barcode_created_at && asset.asset_tag === assetTag && asset.barcode_value === barcodeValue) continue;
+      updateAsset.run(assetTag, barcodeValue, now, now, id);
+      audit(req.user.id, 'CREATE_BARCODE', 'asset', id, 'SUCCESS', null, { asset_tag: assetTag });
+      updated.push(id);
+    }
+
+    db.exec('COMMIT');
+    transactionStarted = false;
+    const placeholders = updated.map(() => '?').join(',');
+    const assets = updated.length
+      ? db.prepare(`SELECT * FROM it_assets WHERE id IN (${placeholders}) ORDER BY asset_tag COLLATE NOCASE`).all(...updated)
+      : [];
+    res.json({ assets, skipped: assetIds.length - updated.length });
+  } catch (error) {
+    if (transactionStarted) db.exec('ROLLBACK');
+    next(error);
   }
 });
 

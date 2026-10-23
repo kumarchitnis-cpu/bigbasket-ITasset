@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS it_assets (
   id TEXT PRIMARY KEY,
   asset_tag TEXT NOT NULL UNIQUE,
+  barcode_value TEXT,
+  barcode_created_at TEXT,
   category TEXT NOT NULL,
   manufacturer TEXT NOT NULL,
   model TEXT NOT NULL,
@@ -289,7 +291,11 @@ export function ensureSchema() {
   if (!writeOffColumns.has('approved_by')) {
     db.exec('ALTER TABLE it_write_off_requests ADD COLUMN approved_by TEXT');
   }
+  const assetColumns = new Set(db.prepare('PRAGMA table_info(it_assets)').all().map((column) => column.name));
+  if (!assetColumns.has('barcode_value')) db.exec('ALTER TABLE it_assets ADD COLUMN barcode_value TEXT');
+  if (!assetColumns.has('barcode_created_at')) db.exec('ALTER TABLE it_assets ADD COLUMN barcode_created_at TEXT');
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('goods_receipt', 0)").run();
+  db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('asset_tag', 0)").run();
   db.prepare("INSERT OR IGNORE INTO sequences (name, value) VALUES ('employee_asset_request', 0)").run();
 }
 
