@@ -651,10 +651,12 @@ button { cursor: pointer; }
 .inventory-created-panel { margin-bottom: 16px; padding-bottom: 18px; }
 .inventory-label-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 18px 14px; }
 .barcode-print-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 0 18px; }
-.inventory-asset-label { display: grid; justify-items: center; gap: 5px; min-width: 210px; padding: 14px 12px; border: 1px solid #dfe7eb; border-radius: 7px; color: #294459; background: #fff; font-size: 10px; text-align: center; }
-.inventory-asset-label > strong { font-size: 12px; }
-.inventory-asset-label > span, .inventory-asset-label small { color: #718797; font-size: 9px; }
-.inventory-asset-label > b { font-size: 10px; }
+.inventory-asset-label { position: relative; display: block; min-width: 210px; padding: 14px 12px 14px 22px; border: 1px solid #dfe7eb; border-radius: 7px; color: #294459; background: #fff; font-size: 10px; text-align: center; }
+.inventory-sticker-brand { position: absolute; top: 50%; left: 18%; color: #4d741c; font-family: Manrope, sans-serif; font-size: 11px !important; font-weight: 900; letter-spacing: .08em; text-align: center; white-space: nowrap; transform: translate(-50%, -50%) rotate(-90deg); }
+.inventory-sticker-content { display: grid; justify-items: center; gap: 5px; }
+.inventory-sticker-content > strong { font-size: 12px; }
+.inventory-sticker-content > span, .inventory-sticker-content small { color: #718797; font-size: 9px; }
+.inventory-sticker-content > b { font-size: 10px; }
 .inventory-qr { display: block; width: 100px; height: 100px; margin: 5px auto 2px; shape-rendering: crispEdges; }
 .inventory-qr-overflow { color: #9a4a3d; font-size: 9px; }
 
@@ -793,7 +795,13 @@ button.assistant-capability:hover { border-color: #c6dadd; background: #f6fbfb; 
   body:has(.barcode-print-sheet) * { visibility: hidden !important; }
   body:has(.barcode-print-sheet) .barcode-print-sheet,
   body:has(.barcode-print-sheet) .barcode-print-sheet * { visibility: visible !important; }
-  .barcode-print-sheet { position: fixed; inset: 0; grid-template-columns: repeat(3, 1fr); align-content: start; gap: 8mm; padding: 0; }
+  .barcode-print-sheet { position: fixed; inset: 0; grid-template-columns: repeat(auto-fill, 3cm); align-content: start; justify-content: start; gap: 2.5mm; padding: 0; }
   .inventory-created-panel { border: 0; box-shadow: none; }
-  .inventory-asset-label { break-inside: avoid; border: 1px solid #9aa8b0; border-radius: 0; }
+  .inventory-asset-label { width: 2.75cm; min-width: 0; min-height: 2cm; break-inside: avoid; padding: .5mm .5mm .5mm 4mm; border: .25mm solid #333; border-radius: 0; color: #000; }
+  .inventory-sticker-brand { left: 17.3%; color: #000; font-size: 5pt !important; font-weight: 900; letter-spacing: .03em; text-align: center; }
+  .inventory-sticker-content { gap: .6mm; }
+  .inventory-sticker-content > strong { font-size: 4.5pt; }
+  .inventory-sticker-content > span, .inventory-sticker-content small { color: #222; font-size: 3.5pt; }
+  .inventory-sticker-content > b { font-size: 3.75pt; }
+  .inventory-qr { width: 1.25cm !important; height: 1.25cm !important; margin: .5mm auto; }
 }

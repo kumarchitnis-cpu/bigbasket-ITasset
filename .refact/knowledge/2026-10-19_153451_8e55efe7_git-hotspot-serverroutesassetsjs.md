@@ -6,7 +6,7 @@ tags:
 - git
 - hotspot
 created: 2026-10-19
-updated: 2026-10-22
+updated: 2026-10-23
 filenames:
 - server/routes/assets.js
 links: []
@@ -14,7 +14,7 @@ kind: code
 status: proposed
 superseded_by: null
 deprecated_at: null
-review_after: 2026-10-22
+review_after: 2026-10-23
 source_chat_id: null
 created_at: 2026-10-19T10:04:51.380562+00:00
 summary: null

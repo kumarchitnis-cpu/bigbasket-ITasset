@@ -141,11 +141,14 @@ function QrCodeGraphic({ asset }: { asset: Asset }) {
 function AssetLabel({ asset }: { asset: Asset }) {
   return (
     <article className="inventory-asset-label">
-      <strong>{asset.manufacturer} {asset.model}</strong>
-      <span>{asset.category} · {asset.serial_number}</span>
-      <QrCodeGraphic asset={asset} />
-      <b>Asset Tag: {asset.asset_tag}</b>
-      <small>{asset.location}</small>
+      <span className="inventory-sticker-brand">Bigbasket</span>
+      <div className="inventory-sticker-content">
+        <strong>{asset.manufacturer} {asset.model}</strong>
+        <span>{asset.category} · {asset.serial_number}</span>
+        <QrCodeGraphic asset={asset} />
+        <b>Asset Tag: {asset.asset_tag}</b>
+        <small>{asset.location}</small>
+      </div>
     </article>
   );
 }
