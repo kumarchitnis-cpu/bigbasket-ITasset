@@ -14,7 +14,6 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
-  Menu,
   Search,
   Settings2,
   ShieldCheck,
@@ -38,6 +37,7 @@ import type {
 } from '@/lib/types';
 import { formatRelativeTime, initials, roleLabel } from '@/lib/format';
 import { ErrorState, LoadingState } from '@/components/ui';
+import { TopNav } from '@/components/TopNav';
 import { AssetsView, AssetModal } from '@/pages/Assets';
 import { AssistantView } from '@/pages/Assistant';
 import { DashboardView } from '@/pages/Dashboard';
@@ -347,6 +347,7 @@ function App() {
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [pendingAssetId, setPendingAssetId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [navigationCollapsed, setNavigationCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
@@ -461,6 +462,14 @@ function App() {
     setMobileNavOpen(false);
   };
 
+  const toggleNavigation = () => {
+    if (window.matchMedia('(max-width: 800px)').matches) {
+      setMobileNavOpen((open) => !open);
+      return;
+    }
+    setNavigationCollapsed((collapsed) => !collapsed);
+  };
+
   const signOut = () => {
     auth.signOut();
     setUser(null);
@@ -495,22 +504,16 @@ function App() {
 
   const canManageUsers = user.role === 'admin';
   const canViewDeleted = user.role === 'admin' || user.role === 'auditor';
+  const navigationExpanded = window.matchMedia('(max-width: 800px)').matches ? mobileNavOpen : !navigationCollapsed;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${navigationCollapsed ? 'navigation-collapsed' : ''}`}>
       {mobileNavOpen && <button className="navigation-backdrop" aria-label="Close navigation menu" onClick={() => setMobileNavOpen(false)} />}
       <aside id="workspace-navigation" className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`} aria-label="Workspace navigation">
-        <div className="brand-row">
-          <img className="brand-logo" src="/images/images.jpeg" alt="Bigbasket" />
-          <div>
-            <div className="brand-name">bigbasket</div>
-            <div className="brand-subtitle">IT OPERATIONS</div>
-          </div>
-          <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation menu">
-            <X size={18} />
-          </button>
-        </div>
         <div className="sidebar-navigation-label">NAVIGATION</div>
+        <button className="sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation menu">
+          <X size={18} />
+        </button>
         <div className="sidebar-navigation">
           {navGroups.map((group) => (
             <section className="nav-group" key={group.label}>
@@ -545,11 +548,8 @@ function App() {
       </aside>
 
       <main className="main-area">
+        <TopNav navigationExpanded={navigationExpanded} onToggleNavigation={toggleNavigation} />
         <header className="topbar">
-          <button className="navigation-menu-button" aria-label="Open navigation menu" aria-controls="workspace-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}>
-            <Menu size={21} />
-            <span>Menu</span>
-          </button>
           <div className="breadcrumbs">
             <button type="button" className="breadcrumb-home" onClick={() => showTab('Dashboard')} aria-label="Go to Dashboard">
               <House size={15} aria-hidden="true" />
