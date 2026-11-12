@@ -13,7 +13,6 @@ import {
   Trash2,
   TrendingUp,
   Users,
-  Wrench,
 } from 'lucide-react';
 import { BarChart, ChartLegend, DonutChart, HorizontalBars, TrendChart } from '@/components/charts';
 import {
@@ -419,10 +418,6 @@ export function DashboardView({
             <button type="button" onClick={() => onNavigate('Notifications')}>
               <Bell size={16} />
               <span>Notifications</span>
-            </button>
-            <button type="button" onClick={() => onNavigate('AI Assistant')}>
-              <Wrench size={16} />
-              <span>AI Assistant</span>
             </button>
           </div>
           <p>

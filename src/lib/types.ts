@@ -254,4 +254,7 @@ export type WorkspaceModule =
   | 'Notifications'
   | 'Settings'
   | 'Deleted'
-  | 'Reports';
+  | 'Reports'
+  | 'Procurement'
+  | 'Server Assets'
+  | 'Laptop Assets';

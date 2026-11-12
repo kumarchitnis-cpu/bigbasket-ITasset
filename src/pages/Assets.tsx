@@ -36,6 +36,8 @@ import {
 import { ChartLegend, DonutChart } from '@/components/charts';
 import { WarrantyLookupLink } from '@/components/warranty';
 
+type AssetCategory = 'Server' | 'Laptop' | 'All';
+
 const assetStatuses: Asset['status'][] = ['AVAILABLE', 'ASSIGNED', 'UNDER_MAINTENANCE', 'QUARANTINED', 'RETIRED'];
 
 const assetActionLabels: Record<AssetEventType, string> = {
@@ -651,6 +653,7 @@ export function AssetsView({
   onRefresh,
   onImportComplete,
   onOpenWarranties,
+  initialCategory,
 }: {
   assets: Asset[];
   user: AppUser;
@@ -661,9 +664,10 @@ export function AssetsView({
   onRefresh: () => void;
   onImportComplete: () => Promise<void>;
   onOpenWarranties: () => void;
+  initialCategory?: AssetCategory;
 }) {
   const [statusFilter, setStatusFilter] = useState<'ALL' | Asset['status']>('ALL');
-  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<AssetCategory>(initialCategory || 'All');
   const [custodianFilter, setCustodianFilter] = useState('ALL');
   const [locationFilter, setLocationFilter] = useState('ALL');
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -686,9 +690,10 @@ export function AssetsView({
   const visibleAssets = assets.filter((asset) => {
     const term = query.trim().toLowerCase();
     const matchesQuery = !term || [asset.asset_tag, asset.category, asset.manufacturer, asset.model, asset.serial_number, asset.custodian, asset.location, asset.department].some((value) => value.toLowerCase().includes(term));
+    const matchesCategory = categoryFilter === 'All' || asset.category === categoryFilter;
     return (
       matchesQuery &&
-      (categoryFilter === 'ALL' || asset.category === categoryFilter) &&
+      matchesCategory &&
       (custodianFilter === 'ALL' || asset.custodian === custodianFilter) &&
       (locationFilter === 'ALL' || asset.location === locationFilter) &&
       (statusFilter === 'ALL' || asset.status === statusFilter)
@@ -777,8 +782,10 @@ export function AssetsView({
 
       <div className="asset-filter-toolbar invoice-toolbar">
         <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter}>
-          <option value="ALL">All categories</option>
-          {categories.map((category) => (
+          <option value="All">All categories</option>
+          <option value="Server">Server</option>
+          <option value="Laptop">Laptop</option>
+          {categories.filter(c => c !== 'Server' && c !== 'Laptop').map((category) => (
             <option key={category} value={category}>
               {category}
             </option>
@@ -835,7 +842,7 @@ export function AssetsView({
           onClose={() => setUploadOpen(false)}
           onSaved={async () => {
             setStatusFilter('ALL');
-            setCategoryFilter('ALL');
+            setCategoryFilter('All');
             setCustodianFilter('ALL');
             setLocationFilter('ALL');
             await onImportComplete();

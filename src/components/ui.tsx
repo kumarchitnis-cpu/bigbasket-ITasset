@@ -268,21 +268,21 @@ export function SearchInput({
   );
 }
 
-export function FilterSelect({
+export function FilterSelect<T extends string>({
   label,
   value,
   onChange,
   children,
 }: {
   label: string;
-  value: string;
-  onChange: (value: string) => void;
+  value: T;
+  onChange: (value: T) => void;
   children: ReactNode;
 }) {
   return (
     <label className="invoice-filter-label">
       {label}
-      <select value={value} onChange={(event) => onChange(event.target.value)} aria-label={label}>
+      <select value={value} onChange={(event) => onChange(event.target.value as T)} aria-label={label}>
         {children}
       </select>
     </label>
