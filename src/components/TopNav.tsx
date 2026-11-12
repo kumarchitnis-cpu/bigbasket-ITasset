@@ -257,9 +257,11 @@ export function TopNav({
                 <button type="button" className="search-trigger" aria-label="Open workspace search" onClick={onOpenSearch}>
                   <Search size={17} />
                 </button>
-                <button type="button" className="search-trigger ai-trigger" aria-label="Open AI assistant" onClick={() => onNavigate('AI Assistant')}>
-                  <Sparkles size={15} />
-                </button>
+                {activeTab !== 'Dashboard' && (
+                  <button type="button" className="search-trigger ai-trigger" aria-label="Open AI assistant" onClick={() => onNavigate('AI Assistant')}>
+                    <Sparkles size={15} />
+                  </button>
+                )}
                 <input
                   ref={searchInputRef}
                   value={searchQuery}

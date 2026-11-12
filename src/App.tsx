@@ -300,7 +300,9 @@ function App() {
   const [query, setQuery] = useState('');
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [pendingAssetId, setPendingAssetId] = useState<string | null>(null);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(
+    () => window.matchMedia('(min-width: 801px)').matches,
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
@@ -395,7 +397,7 @@ function App() {
 
   const showTab = (tab: WorkspaceModule) => {
     setActiveTab(tab);
-    setMobileNavOpen(false);
+    if (window.matchMedia('(max-width: 800px)').matches) setMobileNavOpen(false);
     setSearchOpen(false);
   };
 
@@ -492,15 +494,17 @@ function App() {
             )}
           </div>
           <div className="topbar-actions">
-            <button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI">
-              <Sparkles size={16} />
-              <span>Ask, navigate, or implement\u2026</span>
-              <kbd>AI</kbd>
-            </button>
+            {activeTab !== 'Dashboard' && (
+              <button className="assistant-launch" onClick={() => showTab('AI Assistant')} aria-label="Ask, navigate, or implement with AI">
+                <Sparkles size={16} />
+                <span>Ask, navigate, or implement\u2026</span>
+                <kbd>AI</kbd>
+              </button>
+            )}
           </div>
         </header>
 
-        <div className="page-content">
+        <div className={`page-content ${activeTab === 'Dashboard' ? 'dashboard-page-content' : ''}`}>
           {loading ? (
             <LoadingState />
           ) : error ? (
