@@ -90,7 +90,7 @@ export function WriteOffView({ assets, requests, user, onSaved }: { assets: Asse
                 <option value="">Select an asset</option>
                 {assets.filter((asset) => asset.status !== 'RETIRED').map((asset) => (
                   <option key={asset.id} value={asset.id}>
-                    {asset.asset_tag} · {asset.manufacturer} {asset.model}
+                    {asset.asset_tag} · {asset.manufacturer} {asset.model} · SN: {asset.serial_number}
                   </option>
                 ))}
               </select>

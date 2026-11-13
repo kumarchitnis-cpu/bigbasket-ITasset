@@ -148,11 +148,12 @@ button { cursor: pointer; }
 .data-table .status-badge.expired, .data-table .status-badge.rejected { color: #a64f48; background: #fae9e6; }
 .data-table .status-badge.expiring_soon, .data-table .status-badge.pending_approval { color: #9a6c26; background: #fff3d9; }
 .data-table .status-badge.covered, .data-table .status-badge.approved { color: #287b68; background: #e7f4ef; }
-.writeoff-form { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(220px, 2fr) auto; gap: 12px; align-items: end; padding: 0 20px 20px; }
-.writeoff-form label, .settings-form label { display: flex; flex-direction: column; gap: 6px; color: #587080; font-size: 10px; font-weight: 700; }
-.writeoff-form select, .writeoff-form textarea, .settings-form input { border: 1px solid #dce6ea; border-radius: 6px; padding: 10px; outline: none; color: #27465c; background: #fff; font-size: 11px; }
-.writeoff-form textarea { min-height: 38px; resize: vertical; }
-.writeoff-form select:focus, .writeoff-form textarea:focus, .settings-form input:focus { border-color: #4d8992; box-shadow: 0 0 0 3px #e3f1f0; }
+.writeoff-form { display: grid; grid-template-columns: minmax(220px, 1.1fr) minmax(180px, .85fr) minmax(260px, 1.3fr) auto; gap: 12px; align-items: end; padding: 0 20px 20px; }
+.writeoff-form label, .settings-form label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #587080; font-size: 10px; font-weight: 700; }
+.writeoff-form select, .writeoff-form textarea, .writeoff-form input[type="date"], .settings-form input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #dce6ea; border-radius: 6px; padding: 10px; outline: none; color: #27465c; background: #fff; font-size: 11px; }
+.writeoff-form textarea { min-height: 42px; resize: vertical; }
+.writeoff-form > button { min-height: 38px; padding: 0 18px; white-space: nowrap; }
+.writeoff-form select:focus, .writeoff-form textarea:focus, .writeoff-form input[type="date"]:focus, .settings-form input:focus { border-color: #4d8992; box-shadow: 0 0 0 3px #e3f1f0; }
 .notification-list { display: grid; }
 .notification-row { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-top: 1px solid #eef2f3; }
 .notification-row.unread { background: #f7fbfc; }
@@ -480,8 +481,19 @@ button { cursor: pointer; }
   .sidebar { position: fixed; height: 100vh; }
   .sidebar .help-card { display: none; }
   .writeoff-form { grid-template-columns: 1fr; }
+  .writeoff-form > button { width: 100%; }
   .settings-grid { grid-template-columns: 1fr; }
   .user-permissions-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 1100px) {
+  .writeoff-form { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
+  .writeoff-form label:nth-child(3), .writeoff-form > button { grid-column: 1 / -1; }
+  .writeoff-form > button { justify-self: start; min-width: 220px; }
+}
+@media (max-width: 800px) {
+  .writeoff-form { grid-template-columns: 1fr; }
+  .writeoff-form label:nth-child(3), .writeoff-form > button { grid-column: auto; }
+  .writeoff-form > button { min-width: 0; }
 }
 @media (max-width: 600px) {
   .notification-row { padding: 14px; }
