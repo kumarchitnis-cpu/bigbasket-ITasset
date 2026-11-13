@@ -51,8 +51,6 @@ const navGroups: NavGroup[] = [
       { label: 'Inventory History', icon: Activity },
       { label: 'Warranties', icon: BadgeCheck },
       { label: 'Write-Off', icon: CircleDollarSign },
-      { label: 'Server Assets', icon: Box, badge: 0 },
-      { label: 'Laptop Assets', icon: Box, badge: 0 },
     ],
   },
   {
@@ -91,8 +89,6 @@ const navLabels: Record<WorkspaceModule, string> = {
   Deleted: 'Deleted',
   Reports: 'Reports',
   Procurement: 'Procurement',
-  'Server Assets': 'Server Assets',
-  'Laptop Assets': 'Laptop Assets',
 };
 
 type TopNavProps = {
@@ -171,7 +167,6 @@ export function TopNav({
     items: group.items.filter((item) => {
       if (item.label === 'User Management') return canManageUsers;
       if (item.label === 'Deleted') return canViewDeleted;
-      if (item.label === 'Server Assets' || item.label === 'Laptop Assets') return true;
       if (item.label === 'Procurement') return true;
       return true;
     }),

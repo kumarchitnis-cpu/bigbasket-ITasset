@@ -47,6 +47,14 @@ declare global {
             options: { theme: 'outline'; size: 'large'; text: 'signin_with'; shape: 'rectangular'; width: number },
           ) => void;
         };
+        oauth2: {
+          initTokenClient: (options: {
+            client_id: string;
+            scope: string;
+            callback: (response: { access_token?: string; error?: string; error_description?: string }) => void;
+            error_callback?: (error: { message?: string }) => void;
+          }) => { requestAccessToken: () => void };
+        };
       };
     };
   }
@@ -70,8 +78,6 @@ const navLabels: Record<WorkspaceModule, string> = {
   Deleted: 'Deleted',
   Reports: 'Reports',
   Procurement: 'Procurement',
-  'Server Assets': 'Server Assets',
-  'Laptop Assets': 'Laptop Assets',
 };
 
 function AuthLoading() {
@@ -552,50 +558,6 @@ function App() {
                     }
                   }}
                   onOpenWarranties={() => showTab('Warranties')}
-                />
-              )}
-              {activeTab === 'Server Assets' && (
-                <AssetsView
-                  assets={assets}
-                  user={user}
-                  query={query}
-                  openAssetId={pendingAssetId}
-                  onAssetOpened={() => setPendingAssetId(null)}
-                  onAdd={() => setAssetModalOpen(true)}
-                  onRefresh={() => void loadData(true)}
-                  onImportComplete={async () => {
-                    setQuery('');
-                    setRefreshing(true);
-                    try {
-                      setAssets(await api.get<Asset[]>('/api/assets'));
-                    } finally {
-                      setRefreshing(false);
-                    }
-                  }}
-                  onOpenWarranties={() => showTab('Warranties')}
-                  initialCategory="Server"
-                />
-              )}
-              {activeTab === 'Laptop Assets' && (
-                <AssetsView
-                  assets={assets}
-                  user={user}
-                  query={query}
-                  openAssetId={pendingAssetId}
-                  onAssetOpened={() => setPendingAssetId(null)}
-                  onAdd={() => setAssetModalOpen(true)}
-                  onRefresh={() => void loadData(true)}
-                  onImportComplete={async () => {
-                    setQuery('');
-                    setRefreshing(true);
-                    try {
-                      setAssets(await api.get<Asset[]>('/api/assets'));
-                    } finally {
-                      setRefreshing(false);
-                    }
-                  }}
-                  onOpenWarranties={() => showTab('Warranties')}
-                  initialCategory="Laptop"
                 />
               )}
               {activeTab === 'Invoices' && <InvoicesView invoices={invoices} user={user} query={query} onSaved={() => void loadData(true)} />}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Printer, QrCode, X } from 'lucide-react';
 import { ApiError, api, type AppUser } from '@/lib/api';
 import type { Asset, InventoryReceipt } from '@/lib/types';
@@ -210,8 +210,12 @@ export function InventoryView(props: { assets: Asset[]; receipts: InventoryRecei
   const [createdLabels, setCreatedLabels] = useState<Asset[]>([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState('');
+  const [printAfterBulk, setPrintAfterBulk] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(() => new Set());
   const stock = assets.filter((asset) => asset.status === 'AVAILABLE');
   const filteredStock = stock.filter((asset) => (!categoryFilter || asset.category === categoryFilter) && (!locationFilter || asset.location === locationFilter));
+  const selectedStock = stock.filter((asset) => selectedAssetIds.has(asset.id));
+  const allVisibleSelected = filteredStock.length > 0 && filteredStock.every((asset) => selectedAssetIds.has(asset.id));
   const eligibleStock = stock.filter((asset) => !asset.barcode_created_at || !asset.barcode_value || !asset.asset_tag?.trim());
   const categories = uniqueSorted(stock.map((asset) => asset.category));
   const locations = uniqueSorted(stock.map((asset) => asset.location));
@@ -224,14 +228,29 @@ export function InventoryView(props: { assets: Asset[]; receipts: InventoryRecei
     for (const asset of filteredStock) rows.push([asset.asset_tag, asset.category, asset.manufacturer, asset.model, asset.serial_number, asset.location, asset.barcode_value || 'Not created']);
     downloadCsv('inventory-stock.csv', rows);
   };
-  const createBulk = async () => {
+  const createBulk = async (printAfterCreate = false) => {
+    if (!selectedStock.length) return;
     setBulkBusy(true);
     setBulkError('');
     try {
-      const result = await api.post<{ assets: Asset[]; skipped: number }>('/api/assets/barcodes/bulk', { asset_ids: eligibleStock.map((asset) => asset.id) });
-      setCreatedLabels(result.assets);
-      onSaved();
-      if (!result.assets.length) setBulkError('There are no eligible available assets to barcode.');
+      const readyAssets = selectedStock.filter((asset) => asset.barcode_created_at && asset.barcode_value && asset.asset_tag?.trim());
+      const readyAssetIds = new Set(readyAssets.map((asset) => asset.id));
+      const assetsNeedingStickers = selectedStock.filter((asset) => !readyAssetIds.has(asset.id));
+      let labels = [...readyAssets];
+      let skipped = 0;
+      if (assetsNeedingStickers.length) {
+        const result = await api.post<{ assets: Asset[]; skipped: number }>('/api/assets/barcodes/bulk', {
+          asset_ids: assetsNeedingStickers.map((asset) => asset.id),
+        });
+        labels = [...labels, ...result.assets];
+        skipped = result.skipped;
+        onSaved();
+      }
+      labels.sort((left, right) => left.asset_tag.localeCompare(right.asset_tag));
+      setCreatedLabels(labels);
+      if (printAfterCreate && labels.length) setPrintAfterBulk(true);
+      if (skipped) setBulkError(`${skipped} selected asset(s) could not be stickered because they are no longer available.`);
+      else if (!labels.length) setBulkError('No labels were created for the selected assets.');
     } catch (err) {
       setBulkError(err instanceof ApiError
         ? err.status === 404 ? 'The barcode API is not available yet. Restart the ITAM API server or deploy the updated server, then retry.' : err.message
@@ -241,6 +260,12 @@ export function InventoryView(props: { assets: Asset[]; receipts: InventoryRecei
     }
   };
   const createdCount = useMemo(() => stock.filter((asset) => Boolean(asset.barcode_created_at && asset.barcode_value)).length, [stock]);
+
+  useEffect(() => {
+    if (!printAfterBulk) return;
+    setPrintAfterBulk(false);
+    if (createdLabels.length) window.print();
+  }, [createdLabels, printAfterBulk]);
 
   return (
     <div className="fade-in">
@@ -256,17 +281,35 @@ export function InventoryView(props: { assets: Asset[]; receipts: InventoryRecei
         <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</FilterSelect>
         <FilterSelect label="Location" value={locationFilter} onChange={setLocationFilter}><option value="">All locations</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</FilterSelect>
         <button className="button button-secondary" onClick={downloadStock}>Download CSV</button>
-        {canCreate && <button className="button button-secondary" disabled={!eligibleStock.length || bulkBusy} onClick={() => void createBulk()}>{bulkBusy ? 'Creating labels…' : `Bulk create missing (${eligibleStock.length})`}</button>}
+        {canCreate && <button className="button button-secondary" disabled={!selectedStock.length || bulkBusy} onClick={() => void createBulk()}>{bulkBusy ? 'Creating labels…' : `Bulk create selected (${selectedStock.length})`}</button>}
+        {canCreate && <button className="button button-primary" disabled={(!selectedStock.length && !createdLabels.length) || bulkBusy} onClick={() => selectedStock.length ? void createBulk(true) : window.print()}><Printer size={15} /> Print</button>}
       </div>
       {bulkError && <Banner tone="info" title={bulkError} />}
-      {createdLabels.length > 0 && <section className="panel inventory-created-panel"><PanelHeader title={`${createdLabels.length} barcode label(s) created`} subtitle="Asset details and asset tags are ready to print" /><div className="inventory-label-actions"><button className="button button-primary" onClick={() => window.print()}><Printer size={15} /> Print labels</button><button className="button button-secondary" onClick={() => setCreatedLabels([])}>Dismiss</button></div><div className="barcode-print-sheet">{createdLabels.map((asset) => <AssetLabel key={asset.id} asset={asset} />)}</div></section>}
+      {createdLabels.length > 0 && <section className="panel inventory-created-panel"><PanelHeader title={`${createdLabels.length} barcode label(s) created`} subtitle="Asset details and asset tags are ready to print" /><div className="inventory-label-actions"><button className="button button-secondary" onClick={() => setCreatedLabels([])}>Dismiss</button></div><div className="barcode-print-sheet">{createdLabels.map((asset) => <AssetLabel key={asset.id} asset={asset} />)}</div></section>}
       <section className="panel table-panel full-panel">
         <PanelHeader title="Available stock" subtitle="Select from available stock to create its barcode" />
         <div className="data-table-wrap"><table className="data-table">
-          <thead><tr><th>Asset Tag</th><th>Category</th><th>Manufacturer</th><th>Model</th><th>Serial</th><th>Location</th><th>BARCODE</th></tr></thead>
+          <thead><tr>{canCreate && <th><input type="checkbox" aria-label="Select all visible assets" checked={allVisibleSelected} onChange={(event) => {
+            const checked = event.currentTarget.checked;
+            setSelectedAssetIds((current) => {
+              const next = new Set(current);
+              filteredStock.forEach((asset) => checked ? next.add(asset.id) : next.delete(asset.id));
+              return next;
+            });
+            setCreatedLabels([]);
+          }} /></th>}<th>Asset Tag</th><th>Category</th><th>Manufacturer</th><th>Model</th><th>Serial</th><th>Location</th><th>ASSET STICKER</th></tr></thead>
           <tbody>{filteredStock.map((asset) => {
             const created = Boolean(asset.barcode_created_at && asset.barcode_value);
-            return <tr key={asset.id}><td>{asset.asset_tag || <span className="muted-cell">Missing</span>}</td><td>{asset.category}</td><td>{asset.manufacturer}</td><td>{asset.model}</td><td>{asset.serial_number}</td><td>{asset.location}</td><td>{created || canCreate ? <button type="button" className={`inventory-barcode-status ${created ? 'created' : 'missing'}`} onClick={() => { if (created) { setCreatedLabels([]); setViewBarcodeAsset(asset); } else { setBarcodeAssetId(asset.id); setBarcodeModalOpen(true); } }}>{created ? 'Created' : 'Not Created'}</button> : <span className="muted-cell">Not Created</span>}</td></tr>;
+            return <tr key={asset.id}>{canCreate && <td><input type="checkbox" aria-label={`Select ${asset.asset_tag || asset.model}`} checked={selectedAssetIds.has(asset.id)} onChange={(event) => {
+              const checked = event.currentTarget.checked;
+              setSelectedAssetIds((current) => {
+                const next = new Set(current);
+                if (checked) next.add(asset.id);
+                else next.delete(asset.id);
+                return next;
+              });
+              setCreatedLabels([]);
+            }} /></td>}<td>{asset.asset_tag || <span className="muted-cell">Missing</span>}</td><td>{asset.category}</td><td>{asset.manufacturer}</td><td>{asset.model}</td><td>{asset.serial_number}</td><td>{asset.location}</td><td>{created || canCreate ? <button type="button" className={`inventory-barcode-status ${created ? 'created' : 'missing'}`} onClick={() => { if (created) { setCreatedLabels([]); setViewBarcodeAsset(asset); } else { setBarcodeAssetId(asset.id); setBarcodeModalOpen(true); } }}>{created ? 'Created' : 'Not Created'}</button> : <span className="muted-cell">Not Created</span>}</td></tr>;
           })}</tbody>
         </table>{filteredStock.length === 0 && <EmptyState text="No stock matches the filters." />}</div>
       </section>

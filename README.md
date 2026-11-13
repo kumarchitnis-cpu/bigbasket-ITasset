@@ -26,6 +26,8 @@ For a local PC/server deployment, use Node.js 22, run `npm install`, then `npm r
 
 Google sign-in uses an OAuth 2.0 **Web application** client ID from Google Cloud Console. Workspace admins can configure the client ID under **Settings → Email Settings** and add each app origin (for local development, `http://localhost:5173`) under **Authorized JavaScript origins** in Google Cloud. The client ID may also be supplied through `GOOGLE_CLIENT_ID` in the API environment. The Google Identity Services button verifies the user's Google ID token on the API; successful sign-in creates or links an account by verified email and opens the Operations dashboard. New Google accounts follow the normal first-user-admin / later-user-employee policy.
 
+Asset imports can also read a private Google Sheet directly. Enable the Google Sheets API in the same Google Cloud project as the OAuth web client, add the `https://www.googleapis.com/auth/spreadsheets.readonly` scope to the OAuth consent configuration, and authorize the app's origin. In the Asset Register, choose **Upload Data → Google Sheets**, authorize with an account that can view the sheet, and paste its URL. The importer lists the workbook's tabs for selection, validates the selected tab using the same required columns and 1,000-row limit as Excel imports, then previews duplicate rows by Asset Tag or Serial Number against both the selected tab and the Asset Register. Duplicate rows are skipped when the user confirms import; non-duplicate rows are imported.
+
 ## Environment (`.env`)
 
 Copy `.env.example` to `.env`:

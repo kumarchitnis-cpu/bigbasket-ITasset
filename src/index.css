@@ -2188,3 +2188,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     display: none;
   }
 }
+
+.import-file-label select { width: 100%; border: 1px solid #dce6ea; border-radius: 6px; padding: 10px; color: #27465c; background: #fbfcfd; font-size: 12px; }
+.google-sheet-review { display: grid; gap: 14px; }
+.google-sheet-review-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 18px; padding: 13px 15px; border: 1px solid #dce6ea; border-radius: 7px; background: #f7fafb; color: #617988; font-size: 12px; }
+.google-sheet-review-summary strong { color: #18344f; font-size: 14px; }
+.google-sheet-duplicates h3 { margin: 0 0 10px; color: #8f3b2a; font-size: 14px; }
+.google-sheet-duplicate-table { max-height: 320px; overflow: auto; border: 1px solid #e5ecef; border-radius: 7px; }
+.google-sheet-duplicate-table .data-table { min-width: 760px; }

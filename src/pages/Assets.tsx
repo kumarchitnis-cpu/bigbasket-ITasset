@@ -4,7 +4,9 @@ import {
   BadgeCheck,
   Box,
   ClipboardCheck,
+  Cloud,
   Download,
+  FileText,
   Loader2,
   Plus,
   Search,
@@ -64,6 +66,96 @@ function assetEventDescription(event: AssetEvent) {
   if (event.from_custodian !== event.to_custodian && event.to_custodian) changes.push(`Custodian: ${event.to_custodian}`);
   if (event.location) changes.push(`Location: ${event.location}`);
   return changes.join(' · ') || 'Asset condition and audit record updated.';
+}
+
+async function downloadAssetImportTemplate() {
+  const blob = await api.download('/api/assets/template');
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'asset-import-template.xlsx';
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseGoogleSheetLink(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('Enter a valid Google Sheets link.');
+  }
+  if (url.protocol !== 'https:' || url.hostname !== 'docs.google.com') {
+    throw new Error('Use a Google Sheets link from docs.google.com.');
+  }
+  const match = url.pathname.match(/\/spreadsheets\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]+)/);
+  if (!match) throw new Error('The link does not contain a Google spreadsheet ID.');
+  const gid = url.searchParams.get('gid') ?? new URLSearchParams(url.hash.slice(1)).get('gid');
+  if (gid !== null && !/^\d+$/.test(gid)) throw new Error('The sheet tab ID in this link is invalid.');
+  return { spreadsheetId: match[1], sheetId: gid === null ? undefined : Number(gid) };
+}
+
+async function loadGoogleIdentityServices() {
+  if (window.google?.accounts.oauth2) return;
+  const existingScript = document.getElementById('google-identity-services') as HTMLScriptElement | null;
+  const script = existingScript ?? document.createElement('script');
+  if (!existingScript) {
+    script.id = 'google-identity-services';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      script.removeEventListener('load', onLoad);
+      script.removeEventListener('error', onError);
+    };
+    const onLoad = () => {
+      cleanup();
+      if (window.google?.accounts.oauth2) resolve();
+      else reject(new Error('Google Identity Services did not initialize.'));
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('Google Identity Services could not be loaded.'));
+    };
+    script.addEventListener('load', onLoad);
+    script.addEventListener('error', onError);
+    if (!existingScript) document.head.appendChild(script);
+  });
+}
+
+function requestGoogleSheetsAccessToken(clientId: string) {
+  return new Promise<string>((resolve, reject) => {
+    const oauth2 = window.google?.accounts.oauth2;
+    if (!oauth2) {
+      reject(new Error('Google authorization is not ready. Try again.'));
+      return;
+    }
+    const tokenClient = oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+      callback: (response) => {
+        if (response.error || !response.access_token) {
+          reject(new Error(response.error_description || response.error || 'Google authorization failed.'));
+          return;
+        }
+        resolve(response.access_token);
+      },
+      error_callback: (error) => reject(new Error(error.message || 'Google authorization failed.')),
+    });
+    tokenClient.requestAccessToken();
+  });
+}
+
+async function googleSheetsRequest<T>(url: string, accessToken: string): Promise<T> {
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = (data as { error?: { message?: string } } | null)?.error?.message;
+    throw new Error(message || `Google Sheets request failed (${response.status}).`);
+  }
+  return data as T;
 }
 
 function assetActionIcon(action: AssetEventType): LucideIcon {
@@ -426,13 +518,7 @@ export function AssetImportModal({ onClose, onSaved }: { onClose: () => void; on
     setDownloading(true);
     setError(null);
     try {
-      const blob = await api.download('/api/assets/template');
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = 'asset-import-template.xlsx';
-      anchor.click();
-      URL.revokeObjectURL(url);
+      await downloadAssetImportTemplate();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not download the asset template.');
     } finally {
@@ -643,6 +729,323 @@ export function AssetModal({ userName, department, onClose, onSaved }: { userNam
   );
 }
 
+type GoogleSheetTab = { sheetId: number; title: string };
+type GoogleSheetDuplicate = {
+  rowNumber: number;
+  assetTag: string;
+  serialNumber: string;
+  model: string;
+  reasons: string[];
+};
+type GoogleSheetAnalysis = {
+  total: number;
+  duplicateCount: number;
+  importable: number;
+  duplicates: GoogleSheetDuplicate[];
+};
+type GoogleSheetImportResult = {
+  imported: number;
+  skipped: number;
+  duplicates: GoogleSheetDuplicate[];
+};
+
+function GoogleSheetsImportModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [configuring, setConfiguring] = useState(true);
+  const [configurationError, setConfigurationError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [stage, setStage] = useState<'link' | 'sheets' | 'review'>('link');
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
+  const [sheets, setSheets] = useState<GoogleSheetTab[]>([]);
+  const [selectedSheetId, setSelectedSheetId] = useState<number | null>(null);
+  const [sheetValues, setSheetValues] = useState<unknown[][] | null>(null);
+  const [analysis, setAnalysis] = useState<GoogleSheetAnalysis | null>(null);
+  const [imported, setImported] = useState<GoogleSheetImportResult | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const configure = async () => {
+      try {
+        const config = await api.get<{ configured: boolean; clientId: string }>('/api/auth/google-config');
+        if (!config.clientId) throw new Error('Google OAuth is not configured. Ask an administrator to configure it in Settings.');
+        await loadGoogleIdentityServices();
+        if (active) setGoogleClientId(config.clientId);
+      } catch (err) {
+        if (active) setConfigurationError(err instanceof Error ? err.message : 'Google Sheets authorization could not be initialized.');
+      } finally {
+        if (active) setConfiguring(false);
+      }
+    };
+    void configure();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const downloadTemplate = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      await downloadAssetImportTemplate();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not download the asset template.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const findSheets = async () => {
+    let sheetLink: ReturnType<typeof parseGoogleSheetLink>;
+    try {
+      sheetLink = parseGoogleSheetLink(sheetUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Enter a valid Google Sheets link.');
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setRefreshError(null);
+    try {
+      const accessToken = await requestGoogleSheetsAccessToken(googleClientId);
+      const metadataUrl = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${sheetLink.spreadsheetId}`);
+      metadataUrl.searchParams.set('fields', 'sheets.properties(sheetId,title)');
+      const spreadsheet = await googleSheetsRequest<{
+        sheets?: { properties?: { sheetId: number; title: string } }[];
+      }>(metadataUrl.toString(), accessToken);
+      const availableSheets = (spreadsheet.sheets ?? []).flatMap(({ properties }) => (
+        properties && Number.isInteger(properties.sheetId) && properties.title
+          ? [{ sheetId: properties.sheetId, title: properties.title }]
+          : []
+      ));
+      if (!availableSheets.length) throw new Error('No readable sheet tabs were found in this spreadsheet.');
+      if (sheetLink.sheetId !== undefined && !availableSheets.some(({ sheetId }) => sheetId === sheetLink.sheetId)) {
+        throw new Error('The sheet tab from this link could not be found.');
+      }
+
+      setSpreadsheetId(sheetLink.spreadsheetId);
+      setSheets(availableSheets);
+      setSelectedSheetId(
+        sheetLink.sheetId ?? (availableSheets.length === 1 ? availableSheets[0].sheetId : null),
+      );
+      setSheetValues(null);
+      setAnalysis(null);
+      setStage('sheets');
+    } catch (err) {
+      setError(err instanceof ApiError || err instanceof Error ? err.message : 'Could not read the Google spreadsheet.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const analyzeSelectedSheet = async () => {
+    const selectedSheet = sheets.find(({ sheetId }) => sheetId === selectedSheetId);
+    if (!spreadsheetId || !selectedSheet) {
+      setError('Select a sheet tab to analyze.');
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const accessToken = await requestGoogleSheetsAccessToken(googleClientId);
+      const range = `'${selectedSheet.title.replace(/'/g, "''")}'!A1:Z1002`;
+      const valuesUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`;
+      const sheetData = await googleSheetsRequest<{ values?: unknown[][] }>(valuesUrl, accessToken);
+      if (!sheetData.values?.length) throw new Error('The selected Google Sheets tab is empty.');
+
+      const result = await api.post<GoogleSheetAnalysis>('/api/assets/import/google-sheets/analyze', { values: sheetData.values });
+      setSheetValues(sheetData.values);
+      setAnalysis(result);
+      setStage('review');
+    } catch (err) {
+      setError(err instanceof ApiError || err instanceof Error ? err.message : 'Could not analyze the selected sheet.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (stage === 'link') void findSheets();
+    else if (stage === 'sheets') void analyzeSelectedSheet();
+  };
+
+  const importSheet = async () => {
+    if (!sheetValues || !analysis) return;
+    setBusy(true);
+    setError(null);
+    setRefreshError(null);
+    try {
+      const result = await api.post<GoogleSheetImportResult>('/api/assets/import/google-sheets', { values: sheetValues });
+      setImported(result);
+      try {
+        await onSaved();
+      } catch (refreshFailure) {
+        setRefreshError(refreshFailure instanceof ApiError ? refreshFailure.message : 'The assets were imported, but the register could not be refreshed.');
+      }
+    } catch (err) {
+      setError(err instanceof ApiError || err instanceof Error ? err.message : 'Could not import the Google Sheet.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryRefresh = async () => {
+    setBusy(true);
+    setRefreshError(null);
+    try {
+      await onSaved();
+    } catch (err) {
+      setRefreshError(err instanceof ApiError ? err.message : 'Could not refresh the Asset Register.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={stage === 'review' ? 'Review Google Sheet' : 'Import assets from Google Sheets'}
+      eyebrow="Asset register"
+      onClose={onClose}
+      busy={busy}
+      width="wide"
+    >
+      <form onSubmit={submit}>
+        <p className="import-help">
+          {stage === 'link'
+            ? 'Paste a Google Sheets link. We’ll inspect its tabs and check the selected tab for duplicate assets before import.'
+            : stage === 'sheets'
+              ? `Found ${sheets.length} ${sheets.length === 1 ? 'sheet tab' : 'sheet tabs'}. Select which tab to analyze and upload.`
+              : `Analysis complete for “${sheets.find(({ sheetId }) => sheetId === selectedSheetId)?.title ?? ''}”. Review duplicate rows before importing.`}
+        </p>
+        {stage !== 'review' && (
+          <button type="button" className="button button-secondary template-download" onClick={() => void downloadTemplate()} disabled={downloading || busy}>
+            <Download size={16} />
+            {downloading ? 'Preparing template...' : 'Download Template'}
+          </button>
+        )}
+        {stage === 'link' && (
+          <label className="import-file-label">
+            Google Sheets link
+            <input
+              type="url"
+              required
+              value={sheetUrl}
+              disabled={busy || imported !== null}
+              onChange={(event) => {
+                setSheetUrl(event.target.value);
+                setError(null);
+              }}
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+            />
+          </label>
+        )}
+        {stage === 'sheets' && (
+          <label className="import-file-label">
+            Sheet tab to upload
+            <select
+              required
+              value={selectedSheetId ?? ''}
+              disabled={busy}
+              onChange={(event) => setSelectedSheetId(event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="" disabled>Select a sheet tab</option>
+              {sheets.map((sheet) => <option key={sheet.sheetId} value={sheet.sheetId}>{sheet.title}</option>)}
+            </select>
+          </label>
+        )}
+        {configuring && <p className="import-help">Preparing Google authorization…</p>}
+        {configurationError && <InlineError message={configurationError} />}
+        {error && <InlineError message={error} />}
+        {stage === 'review' && analysis && (
+          <section className="google-sheet-review" aria-live="polite">
+            <div className="google-sheet-review-summary">
+              <strong>{analysis.importable} ready to import</strong>
+              <span>{analysis.duplicateCount} duplicate {analysis.duplicateCount === 1 ? 'row' : 'rows'} will be skipped · {analysis.total} total rows</span>
+            </div>
+            {analysis.duplicates.length ? (
+              <div className="google-sheet-duplicates">
+                <h3>Duplicate data found</h3>
+                <div className="google-sheet-duplicate-table">
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Sheet row</th><th>Asset Tag</th><th>Serial Number</th><th>Model</th><th>Duplicate reason</th></tr>
+                    </thead>
+                    <tbody>
+                      {analysis.duplicates.map((duplicate) => (
+                        <tr key={duplicate.rowNumber}>
+                          <td>{duplicate.rowNumber}</td>
+                          <td><strong>{duplicate.assetTag}</strong></td>
+                          <td>{duplicate.serialNumber}</td>
+                          <td>{duplicate.model}</td>
+                          <td>{duplicate.reasons.join('; ')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="import-success">No duplicate rows found. All {analysis.total} rows are ready to import.</div>
+            )}
+          </section>
+        )}
+        {imported && (
+          <div className="import-success" role="status">
+            Imported {imported.imported} {imported.imported === 1 ? 'asset' : 'assets'}; skipped {imported.skipped} duplicate {imported.skipped === 1 ? 'row' : 'rows'}.
+          </div>
+        )}
+        {refreshError && (
+          <div className="auth-message import-error" role="alert">
+            Import succeeded, but the Asset Register could not be refreshed: {refreshError}
+            <button type="button" className="text-button" onClick={() => void retryRefresh()} disabled={busy}>Retry refresh</button>
+          </div>
+        )}
+        <div className="modal-actions">
+          {imported ? (
+            <button type="button" className="button button-primary" onClick={onClose} disabled={busy}>Done</button>
+          ) : stage === 'link' ? (
+            <>
+              <button type="button" className="button button-secondary" disabled={busy} onClick={onClose}>Cancel</button>
+              <button className="button button-primary" disabled={!sheetUrl || !googleClientId || configuring || busy}>
+                {busy ? <Loader2 size={16} className="spin" /> : <FileText size={16} />} {busy ? 'Checking sheets...' : 'Import Google Sheet'}
+              </button>
+            </>
+          ) : stage === 'sheets' ? (
+            <>
+              <button type="button" className="button button-secondary" disabled={busy} onClick={() => {
+                setStage('link');
+                setSheets([]);
+                setSelectedSheetId(null);
+              }}>Change link</button>
+              <button className="button button-primary" disabled={selectedSheetId === null || busy}>
+                {busy ? <Loader2 size={16} className="spin" /> : <FileText size={16} />} {busy ? 'Analyzing sheet...' : 'Analyze selected sheet'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="button button-secondary" disabled={busy || imported !== null} onClick={() => {
+                setStage('sheets');
+                setAnalysis(null);
+                setSheetValues(null);
+                setError(null);
+              }}>Back to sheet selection</button>
+              <button type="button" className="button button-primary" disabled={!analysis?.importable || busy || imported !== null} onClick={() => void importSheet()}>
+                {busy ? <Loader2 size={16} className="spin" /> : <Upload size={16} />} {busy ? 'Importing...' : `Import ${analysis?.importable ?? 0} non-duplicate assets`}
+              </button>
+            </>
+          )}
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function AssetsView({
   assets,
   user,
@@ -653,7 +1056,6 @@ export function AssetsView({
   onRefresh,
   onImportComplete,
   onOpenWarranties,
-  initialCategory,
 }: {
   assets: Asset[];
   user: AppUser;
@@ -664,14 +1066,13 @@ export function AssetsView({
   onRefresh: () => void;
   onImportComplete: () => Promise<void>;
   onOpenWarranties: () => void;
-  initialCategory?: AssetCategory;
 }) {
   const [statusFilter, setStatusFilter] = useState<'ALL' | Asset['status']>('ALL');
-  const [categoryFilter, setCategoryFilter] = useState<AssetCategory>(initialCategory || 'All');
+  const [categoryFilter, setCategoryFilter] = useState<AssetCategory>('All');
   const [custodianFilter, setCustodianFilter] = useState('ALL');
   const [locationFilter, setLocationFilter] = useState('ALL');
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'options' | 'excel' | 'sheets' | null>(null);
   const canManage = user.role === 'admin' || user.role === 'it_asset_manager';
 
   useEffect(() => {
@@ -746,8 +1147,8 @@ export function AssetsView({
         </button>
         {canManage && (
           <>
-            <button className="button button-secondary" onClick={() => setUploadOpen(true)}>
-              <Upload size={16} /> Upload Excel
+            <button className="button button-secondary" onClick={() => setUploadMode('options')}>
+              <Upload size={16} /> Upload Data
             </button>
             <button className="button button-primary" onClick={onAdd}>
               <Plus size={17} /> Add asset
@@ -783,8 +1184,8 @@ export function AssetsView({
       <div className="asset-filter-toolbar invoice-toolbar">
         <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter}>
           <option value="All">All categories</option>
-          <option value="Server">Server</option>
-          <option value="Laptop">Laptop</option>
+          <option value="Server">Server Assets</option>
+          <option value="Laptop">Laptop Assets</option>
           {categories.filter(c => c !== 'Server' && c !== 'Laptop').map((category) => (
             <option key={category} value={category}>
               {category}
@@ -837,9 +1238,38 @@ export function AssetsView({
       </section>
 
       {selectedAsset && <AssetLifecycleDialog asset={selectedAsset} canManage={canManage} onClose={() => setSelectedAsset(null)} onSaved={onRefresh} />}
-      {uploadOpen && (
+      {uploadMode === 'options' && (
+        <Modal title="Upload Data" eyebrow="Asset register" onClose={() => setUploadMode(null)}>
+          <p className="import-help">Choose how you want to upload asset data.</p>
+          <div className="modal-actions">
+            <button type="button" className="button button-secondary" disabled title="Google Drive upload is not configured yet.">
+              <Cloud size={16} /> Google Drive
+            </button>
+            <button type="button" className="button button-secondary" onClick={() => setUploadMode('sheets')}>
+              <FileText size={16} /> Google Sheets
+            </button>
+            <button type="button" className="button button-primary" onClick={() => setUploadMode('excel')}>
+              <Upload size={16} /> Upload via Excel
+            </button>
+          </div>
+          <p className="import-help">Google Drive upload will be available after an administrator configures it.</p>
+        </Modal>
+      )}
+      {uploadMode === 'excel' && (
         <AssetImportModal
-          onClose={() => setUploadOpen(false)}
+          onClose={() => setUploadMode(null)}
+          onSaved={async () => {
+            setStatusFilter('ALL');
+            setCategoryFilter('All');
+            setCustodianFilter('ALL');
+            setLocationFilter('ALL');
+            await onImportComplete();
+          }}
+        />
+      )}
+      {uploadMode === 'sheets' && (
+        <GoogleSheetsImportModal
+          onClose={() => setUploadMode(null)}
           onSaved={async () => {
             setStatusFilter('ALL');
             setCategoryFilter('All');

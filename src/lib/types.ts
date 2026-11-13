@@ -255,6 +255,4 @@ export type WorkspaceModule =
   | 'Settings'
   | 'Deleted'
   | 'Reports'
-  | 'Procurement'
-  | 'Server Assets'
-  | 'Laptop Assets';
+  | 'Procurement';
