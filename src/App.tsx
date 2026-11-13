@@ -91,6 +91,36 @@ function AuthLoading() {
   );
 }
 
+function notificationDestination(notification: WorkspaceNotification, role: string): WorkspaceModule {
+  switch (notification.entity_type?.toLowerCase()) {
+    case 'asset':
+      return 'Assets';
+    case 'invoice':
+      return 'Invoices';
+    case 'employee_asset_request':
+      return 'Emp Asset Mgmt';
+    case 'write_off_request':
+      return 'Write-Off';
+    case 'inventory_receipt':
+      return 'Inventory History';
+    case 'inventory':
+      return 'Inventory';
+    case 'user':
+      return role === 'admin' ? 'User Management' : 'Settings';
+    default:
+      break;
+  }
+
+  const eventType = notification.event_type.toUpperCase();
+  if (eventType.includes('WRITE_OFF')) return 'Write-Off';
+  if (eventType.includes('EMPLOYEE') && eventType.includes('REQUEST')) return 'Emp Asset Mgmt';
+  if (eventType.startsWith('INVOICE')) return 'Invoices';
+  if (eventType.startsWith('ASSET')) return 'Assets';
+  if (eventType.startsWith('INVENTORY')) return 'Inventory';
+  if (eventType.startsWith('USER_ROLE')) return role === 'admin' ? 'User Management' : 'Settings';
+  return 'Notifications';
+}
+
 function AuthScreen({ onAuth }: { onAuth: (user: AppUser) => void }) {
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [email, setEmail] = useState('');
@@ -458,6 +488,23 @@ function App() {
     setUserMenuOpen(false);
   };
 
+  const handleSelectNotification = async (notification: WorkspaceNotification) => {
+    if (!notification.read_at) await markNotificationRead(notification.id);
+
+    const destination = notificationDestination(notification, user.role);
+    if (destination === 'Assets' && notification.entity_id) {
+      const asset = assets.find((item) => item.id === notification.entity_id);
+      if (asset) openAsset(asset);
+      else showTab(destination);
+    } else if (destination === 'Invoices' && notification.entity_id) {
+      const invoice = invoices.find((item) => item.id === notification.entity_id);
+      if (invoice) setQuery(invoice.invoice_number);
+      showTab(destination);
+    } else {
+      showTab(destination);
+    }
+  };
+
   const handleOpenUserMenu = () => {
     setUserMenuOpen((open) => !open);
     setNotificationMenuOpen(false);
@@ -472,6 +519,7 @@ function App() {
         canManageUsers={canManageUsers}
         canViewDeleted={canViewDeleted}
         unreadNotificationCount={unreadCount}
+        notifications={notifications}
         onToggleMobileNav={toggleNavigation}
         mobileNavOpen={mobileNavOpen}
         onSearch={handleSearch}
@@ -480,6 +528,9 @@ function App() {
         searchQuery={query}
         searchOpen={searchOpen}
         onOpenNotifications={handleOpenNotifications}
+        onCloseNotifications={() => setNotificationMenuOpen(false)}
+        onSelectNotification={handleSelectNotification}
+        notificationMenuRef={notificationMenuRef}
         onOpenUserMenu={handleOpenUserMenu}
         notificationMenuOpen={notificationMenuOpen}
         userMenuOpen={userMenuOpen}
@@ -583,7 +634,13 @@ function App() {
               )}
               {activeTab === 'Write-Off' && <WriteOffView assets={assets} requests={writeOffRequests} user={user} onSaved={() => void loadData(true)} />}
               {activeTab === 'Notifications' && (
-                <NotificationsView notifications={notifications} onRead={markNotificationRead} onReadAll={markAllNotificationsRead} onDelete={deleteNotification} />
+                <NotificationsView
+                  notifications={notifications}
+                  onRead={markNotificationRead}
+                  onReadAll={markAllNotificationsRead}
+                  onDelete={deleteNotification}
+                  onNavigateToNotification={handleSelectNotification}
+                />
               )}
               {activeTab === 'User Management' && canManageUsers && <UserManagementView currentUser={user} />}
               {activeTab === 'Settings' && <SettingsView user={user} onSaved={setUser} />}

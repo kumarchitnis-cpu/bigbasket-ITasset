@@ -13,6 +13,7 @@ import {
   Settings2,
   XCircle,
   ChevronDown,
+  ChevronRight,
   Search,
   Sparkles,
   LogOut,
@@ -20,10 +21,9 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import type { WorkspaceModule } from '@/lib/types';
+import type { WorkspaceModule, WorkspaceNotification } from '@/lib/types';
 import type { AppUser } from '@/lib/api';
-import { roleLabel } from '@/lib/format';
-import { initials } from '@/lib/format';
+import { formatRelativeTime, initials, roleLabel } from '@/lib/format';
 
 type NavGroup = {
   label: string;
@@ -98,6 +98,7 @@ type TopNavProps = {
   canManageUsers: boolean;
   canViewDeleted: boolean;
   unreadNotificationCount: number;
+  notifications: WorkspaceNotification[];
   onToggleMobileNav: () => void;
   mobileNavOpen: boolean;
   onSearch: (query: string) => void;
@@ -106,6 +107,9 @@ type TopNavProps = {
   searchQuery: string;
   searchOpen: boolean;
   onOpenNotifications: () => void;
+  onCloseNotifications: () => void;
+  onSelectNotification: (notification: WorkspaceNotification) => Promise<void>;
+  notificationMenuRef: RefObject<HTMLDivElement>;
   onOpenUserMenu: () => void;
   notificationMenuOpen: boolean;
   userMenuOpen: boolean;
@@ -119,6 +123,7 @@ export function TopNav({
   canManageUsers,
   canViewDeleted,
   unreadNotificationCount,
+  notifications,
   onToggleMobileNav,
   mobileNavOpen,
   onSearch,
@@ -127,12 +132,16 @@ export function TopNav({
   searchQuery,
   searchOpen,
   onOpenNotifications,
+  onCloseNotifications,
+  onSelectNotification,
+  notificationMenuRef,
   onOpenUserMenu,
   notificationMenuOpen,
   userMenuOpen,
   onSignOut,
 }: TopNavProps) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [notificationActionError, setNotificationActionError] = useState<string | null>(null);
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -160,6 +169,16 @@ export function TopNav({
   const handleGroupItemClick = (tab: WorkspaceModule) => {
     onNavigate(tab);
     setOpenGroup(null);
+  };
+
+  const handleNotificationClick = async (notification: WorkspaceNotification) => {
+    setNotificationActionError(null);
+    try {
+      await onSelectNotification(notification);
+      onCloseNotifications();
+    } catch (error) {
+      setNotificationActionError(error instanceof Error ? error.message : 'Could not open this notification.');
+    }
   };
 
   const filteredGroups = navGroups.map((group) => ({
@@ -284,16 +303,56 @@ export function TopNav({
           </div>
 
           <div className="top-nav-actions">
-            <button
-              className="icon-button notification-button"
-              aria-label="Notifications"
-              aria-expanded={notificationMenuOpen}
-              aria-haspopup="true"
-              onClick={onOpenNotifications}
-            >
-              <Bell size={19} />
-              {unreadNotificationCount > 0 && <span />}
-            </button>
+            <div className="notification-menu-wrap" ref={notificationMenuRef}>
+              <button
+                type="button"
+                className="icon-button notification-button"
+                aria-label={unreadNotificationCount > 0 ? `Notifications, ${unreadNotificationCount} unread` : 'Notifications'}
+                aria-expanded={notificationMenuOpen}
+                aria-haspopup="dialog"
+                onClick={onOpenNotifications}
+              >
+                <Bell size={19} />
+                {unreadNotificationCount > 0 && (
+                  <span className="notification-badge">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>
+                )}
+              </button>
+              {notificationMenuOpen && (
+                <div className="notification-popover" role="dialog" aria-label="Recent notifications">
+                  <div className="notification-popover-heading">
+                    <strong>Notifications</strong>
+                    <span>{unreadNotificationCount ? `${unreadNotificationCount} unread` : 'You’re all caught up'}</span>
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div className="notification-popover-empty">You don’t have any notifications yet.</div>
+                  ) : (
+                    notifications.slice(0, 5).map((notification) => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        className={`notification-popover-item ${notification.read_at ? '' : 'unread'}`}
+                        onClick={() => void handleNotificationClick(notification)}
+                      >
+                        <strong>{notification.title}</strong>
+                        <span>{notification.body}</span>
+                        <small>{notification.read_at ? '' : 'Unread · '}{formatRelativeTime(notification.created_at)}</small>
+                      </button>
+                    ))
+                  )}
+                  {notificationActionError && <p className="notification-popover-error" role="alert">{notificationActionError}</p>}
+                  <button
+                    type="button"
+                    className="notification-popover-footer"
+                    onClick={() => {
+                      onCloseNotifications();
+                      onNavigate('Notifications');
+                    }}
+                  >
+                    View all notifications <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="user-menu-wrap">
               <button

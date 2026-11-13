@@ -195,6 +195,10 @@ CREATE TABLE IF NOT EXISTS it_write_off_requests (
   reviewer_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   review_note TEXT,
   reviewed_at TEXT,
+  buyback_employee_name TEXT,
+  buyback_employee_id TEXT,
+  buyback_employee_designation TEXT,
+  buyback_employee_department TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -290,6 +294,52 @@ export function ensureSchema() {
   }
   if (!writeOffColumns.has('approved_by')) {
     db.exec('ALTER TABLE it_write_off_requests ADD COLUMN approved_by TEXT');
+  }
+  if (!writeOffColumns.has('buyback_employee_name')) {
+    db.exec('ALTER TABLE it_write_off_requests ADD COLUMN buyback_employee_name TEXT');
+  }
+  if (!writeOffColumns.has('buyback_employee_id')) {
+    db.exec('ALTER TABLE it_write_off_requests ADD COLUMN buyback_employee_id TEXT');
+  }
+  if (!writeOffColumns.has('buyback_employee_designation')) {
+    db.exec('ALTER TABLE it_write_off_requests ADD COLUMN buyback_employee_designation TEXT');
+  }
+  if (!writeOffColumns.has('buyback_employee_department')) {
+    db.exec('ALTER TABLE it_write_off_requests ADD COLUMN buyback_employee_department TEXT');
+  }
+  const legacyBuybackRequests = db.prepare(
+    `SELECT w.id, a.serial_number
+     FROM it_write_off_requests w
+     JOIN it_assets a ON a.id = w.asset_id
+     WHERE w.reason = 'Buyback'
+       AND (NULLIF(w.buyback_employee_name, '') IS NULL OR NULLIF(w.buyback_employee_id, '') IS NULL
+         OR NULLIF(w.buyback_employee_designation, '') IS NULL OR NULLIF(w.buyback_employee_department, '') IS NULL)`,
+  ).all();
+  const findAssignmentBySerial = db.prepare(
+    `SELECT employee_name, employee_id, designation, department
+     FROM it_employee_asset_assignments
+     WHERE LOWER(TRIM(serial_number)) = LOWER(TRIM(?))`,
+  );
+  const updateBuybackEmployee = db.prepare(
+    `UPDATE it_write_off_requests
+     SET buyback_employee_name = COALESCE(NULLIF(buyback_employee_name, ''), ?),
+         buyback_employee_id = COALESCE(NULLIF(buyback_employee_id, ''), ?),
+         buyback_employee_designation = COALESCE(NULLIF(buyback_employee_designation, ''), ?),
+         buyback_employee_department = COALESCE(NULLIF(buyback_employee_department, ''), ?)
+     WHERE id = ?`,
+  );
+  for (const request of legacyBuybackRequests) {
+    const assignments = findAssignmentBySerial.all(request.serial_number);
+    if (assignments.length === 1) {
+      const [employee] = assignments;
+      updateBuybackEmployee.run(
+        employee.employee_name,
+        employee.employee_id,
+        employee.designation,
+        employee.department,
+        request.id,
+      );
+    }
   }
   const assetColumns = new Set(db.prepare('PRAGMA table_info(it_assets)').all().map((column) => column.name));
   if (!assetColumns.has('barcode_value')) db.exec('ALTER TABLE it_assets ADD COLUMN barcode_value TEXT');

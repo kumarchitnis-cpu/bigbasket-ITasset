@@ -29,11 +29,13 @@ export function NotificationsView({
   onRead,
   onReadAll,
   onDelete,
+  onNavigateToNotification,
 }: {
   notifications: WorkspaceNotification[];
   onRead: (id: string) => Promise<void>;
   onReadAll: () => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onNavigateToNotification: (notification: WorkspaceNotification) => Promise<void>;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -75,6 +77,15 @@ export function NotificationsView({
       setError(err instanceof ApiError ? err.message : 'Could not delete this notification.');
     } finally {
       setBusy(null);
+    }
+  };
+
+  const openNotification = async (notification: WorkspaceNotification) => {
+    setError(null);
+    try {
+      await onNavigateToNotification(notification);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not open this notification.');
     }
   };
 
@@ -126,8 +137,14 @@ export function NotificationsView({
                 <Bell size={16} />
               </div>
               <div className="notification-copy">
-                <strong>{notification.title}</strong>
-                <span>{notification.body}</span>
+                <button
+                  type="button"
+                  className="notification-open-button"
+                  onClick={() => void openNotification(notification)}
+                >
+                  <strong>{notification.title}</strong>
+                  <span>{notification.body}</span>
+                </button>
                 <small>
                   <span className="notification-type">{notificationTypeLabels[notification.event_type] ?? 'Workspace'}</span>
                   {formatDateTime(notification.created_at)} · {formatRelativeTime(notification.created_at)}

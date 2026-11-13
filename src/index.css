@@ -148,11 +148,25 @@ button { cursor: pointer; }
 .data-table .status-badge.expired, .data-table .status-badge.rejected { color: #a64f48; background: #fae9e6; }
 .data-table .status-badge.expiring_soon, .data-table .status-badge.pending_approval { color: #9a6c26; background: #fff3d9; }
 .data-table .status-badge.covered, .data-table .status-badge.approved { color: #287b68; background: #e7f4ef; }
-.writeoff-form { display: grid; grid-template-columns: minmax(220px, 1.1fr) minmax(180px, .85fr) minmax(260px, 1.3fr) auto; gap: 12px; align-items: end; padding: 0 20px 20px; }
+.writeoff-form { display: grid; gap: 14px; padding: 0 20px 20px; }
 .writeoff-form label, .settings-form label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #587080; font-size: 10px; font-weight: 700; }
 .writeoff-form select, .writeoff-form textarea, .writeoff-form input[type="date"], .settings-form input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #dce6ea; border-radius: 6px; padding: 10px; outline: none; color: #27465c; background: #fff; font-size: 11px; }
 .writeoff-form textarea { min-height: 42px; resize: vertical; }
-.writeoff-form > button { min-height: 38px; padding: 0 18px; white-space: nowrap; }
+.writeoff-form-fields { display: grid; grid-template-columns: minmax(220px, 1.1fr) minmax(180px, .85fr) minmax(260px, 1.3fr) auto; gap: 12px; align-items: end; }
+.writeoff-form-fields > button { min-height: 38px; padding: 0 18px; white-space: nowrap; }
+.writeoff-buyback-tabs { display: flex; gap: 5px; padding: 4px; border: 1px solid #e4eaee; border-radius: 8px; background: #f0f3f5; }
+.writeoff-buyback-tabs button { min-height: 34px; padding: 0 12px; border: 1px solid transparent; border-radius: 6px; color: #617b8e; background: transparent; font-size: 10px; font-weight: 700; }
+.writeoff-buyback-tabs button[aria-selected="true"] { border-color: #e2e8ec; color: #3e681d; background: #fff; box-shadow: 0 1px 3px rgba(28,58,79,.06); }
+.writeoff-step-panel { display: grid; gap: 14px; }
+.writeoff-buyback-fields { display: grid; grid-template-columns: minmax(220px, .85fr) minmax(300px, 1.35fr); gap: 12px; align-items: start; }
+.writeoff-employee-summary, .writeoff-employee-hint { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; min-height: 56px; margin: 0; padding: 12px 14px; border: 1px solid #e4eaee; border-radius: 7px; background: #f8fafb; }
+.writeoff-employee-summary div { display: grid; gap: 3px; min-width: 0; }
+.writeoff-employee-summary dt { color: #8296a2; font-size: 9px; font-weight: 700; }
+.writeoff-employee-summary dd { overflow-wrap: anywhere; margin: 0; color: #27465c; font-size: 11px; font-weight: 700; }
+.writeoff-employee-hint { display: flex; align-items: center; color: #8296a2; font-size: 10px; }
+.writeoff-employee-error { grid-column: 1 / -1; margin: 0; color: #a64f48; font-size: 10px; }
+.writeoff-buyback-actions { display: flex; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid #edf1f3; }
+.writeoff-buyback-actions button { min-height: 38px; }
 .writeoff-form select:focus, .writeoff-form textarea:focus, .writeoff-form input[type="date"]:focus, .settings-form input:focus { border-color: #4d8992; box-shadow: 0 0 0 3px #e3f1f0; }
 .notification-list { display: grid; }
 .notification-row { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-top: 1px solid #eef2f3; }
@@ -480,20 +494,19 @@ button { cursor: pointer; }
 @media (max-width: 800px) {
   .sidebar { position: fixed; height: 100vh; }
   .sidebar .help-card { display: none; }
-  .writeoff-form { grid-template-columns: 1fr; }
-  .writeoff-form > button { width: 100%; }
   .settings-grid { grid-template-columns: 1fr; }
   .user-permissions-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 1100px) {
-  .writeoff-form { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
-  .writeoff-form label:nth-child(3), .writeoff-form > button { grid-column: 1 / -1; }
-  .writeoff-form > button { justify-self: start; min-width: 220px; }
+  .writeoff-form-fields { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
+  .writeoff-reason-field, .writeoff-form-fields > button { grid-column: 1 / -1; }
+  .writeoff-form-fields > button { justify-self: start; min-width: 220px; }
 }
 @media (max-width: 800px) {
-  .writeoff-form { grid-template-columns: 1fr; }
-  .writeoff-form label:nth-child(3), .writeoff-form > button { grid-column: auto; }
-  .writeoff-form > button { min-width: 0; }
+  .writeoff-form-fields, .writeoff-buyback-fields { grid-template-columns: 1fr; }
+  .writeoff-reason-field, .writeoff-form-fields > button { grid-column: auto; }
+  .writeoff-form-fields > button, .writeoff-buyback-actions button { width: 100%; min-width: 0; }
+  .writeoff-buyback-actions { flex-direction: column-reverse; }
 }
 @media (max-width: 600px) {
   .notification-row { padding: 14px; }
@@ -1418,7 +1431,18 @@ button { cursor: pointer; }
 .notification-popover-item:last-child { border-bottom: 0; }
 .notification-popover-item:hover { background: #f8fafb; }
 .notification-popover-item strong { color: #303b47; font-size: 13px; font-weight: 600; }
+.notification-popover-item span { color: #718794; font-size: 11px; line-height: 1.5; }
 .notification-popover-item small { color: #74869b; font-size: 11px; }
+.notification-popover-item.unread { background: #f5fafb; }
+.notification-popover-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.notification-popover-heading span { color: #74869b; font-size: 10px; font-weight: 500; }
+.notification-popover-footer { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 11px 12px; border: 0; border-top: 1px solid #edf1f3; color: #2f6d79; background: #fbfcfd; font-size: 11px; font-weight: 700; text-align: left; cursor: pointer; }
+.notification-popover-footer:hover { background: #f3f8f9; }
+.notification-popover-error { margin: 0; padding: 9px 12px; color: #a64f48; background: #fff7f5; font-size: 11px; }
+.notification-button .notification-badge { position: absolute; top: -4px; right: -7px; display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid #fff; border-radius: 999px; color: #fff; background: #d65f50; font-size: 9px; font-weight: 800; line-height: 1; }
+.notification-open-button { display: grid; gap: 4px; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.notification-open-button:hover strong { color: #2f6d79; }
+.notification-open-button:focus-visible { outline: 2px solid #4d8992; outline-offset: 3px; border-radius: 2px; }
 .notification-popover-empty { padding: 18px 12px; color: #74869b; font-size: 12px; }
 .breadcrumb-home { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: #607b91; font: inherit; cursor: pointer; white-space: nowrap; }
 .breadcrumb-home:hover { color: #203b54; }
@@ -2208,3 +2232,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .google-sheet-duplicates h3 { margin: 0 0 10px; color: #8f3b2a; font-size: 14px; }
 .google-sheet-duplicate-table { max-height: 320px; overflow: auto; border: 1px solid #e5ecef; border-radius: 7px; }
 .google-sheet-duplicate-table .data-table { min-width: 760px; }
+.report-export-grid { margin-bottom: 14px; }
+.report-export-grid label { display: flex; flex-direction: column; gap: 6px; color: #617988; font-size: 11px; font-weight: 700; }
+.report-export-grid select { min-width: 0; border: 1px solid #dce6ea; border-radius: 6px; padding: 10px; color: #27465c; background: #fbfcfd; font-size: 12px; }
+.report-export-help { margin: 0; color: #718797; font-size: 11px; line-height: 1.6; }
+.report-print-sheet { display: none; }
+@page report { size: landscape; margin: 10mm; }
+@media print {
+  body:has(.report-print-sheet) * { visibility: hidden !important; }
+  body:has(.report-print-sheet) .report-print-sheet,
+  body:has(.report-print-sheet) .report-print-sheet * { visibility: visible !important; }
+  .report-print-sheet { position: fixed; inset: 0; display: block !important; overflow: visible; padding: 0; background: #fff; color: #111; page: report; }
+  .report-print-sheet h1 { margin: 0 0 4mm; font-size: 16pt; }
+  .report-print-sheet p { margin: 0 0 5mm; font-size: 8pt; }
+  .report-print-section { margin-bottom: 8mm; }
+  .report-print-section h2 { margin: 0 0 3mm; font-size: 11pt; }
+  .report-print-sheet table { width: 100%; border-collapse: collapse; font-size: 6pt; }
+  .report-print-sheet th, .report-print-sheet td { padding: 2mm; border: .2mm solid #888; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  .report-print-sheet th { background: #eee; }
+  .report-print-sheet tr { break-inside: avoid; }
+}

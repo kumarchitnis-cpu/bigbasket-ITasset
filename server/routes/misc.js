@@ -286,7 +286,7 @@ router.get('/notifications', (req, res, next) => {
 router.put('/notifications/:id/read', (req, res, next) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM app_notifications WHERE id = ?').get(req.params.id);
+    const existing = db.prepare('SELECT id, recipient_id FROM app_notifications WHERE id = ?').get(req.params.id);
     if (!existing || existing.recipient_id !== req.user.id) {
       return res.status(404).json({ error: 'Notification not found.' });
     }
@@ -311,7 +311,7 @@ router.put('/notifications/read-all', (req, res, next) => {
 router.delete('/notifications/:id', (req, res, next) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM app_notifications WHERE id = ?').get(req.params.id);
+    const existing = db.prepare('SELECT id, recipient_id FROM app_notifications WHERE id = ?').get(req.params.id);
     if (!existing || existing.recipient_id !== req.user.id) {
       return res.status(404).json({ error: 'Notification not found.' });
     }

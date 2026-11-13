@@ -133,6 +133,10 @@ export type WriteOffRequest = {
   reason: string;
   write_off_date?: string | null;
   approved_by?: string | null;
+  buyback_employee_name?: string | null;
+  buyback_employee_id?: string | null;
+  buyback_employee_designation?: string | null;
+  buyback_employee_department?: string | null;
   status: WriteOffStatus;
   review_note: string | null;
   reviewer_name?: string | null;

@@ -18,6 +18,7 @@ const assignmentFields = [
 ];
 const assignmentRoles = ['admin', 'it_asset_manager'];
 const assignmentSelect = 'id, employee_name, employee_id, designation, department, asset_model, serial_number, doj, remarks, created_by, created_at, updated_at';
+const writeOffReasons = ['Damage', 'End of Life', 'Lost or Theft', 'Buyback'];
 
 function parseAssignment(body, db, existingId = null) {
   const assignment = {};
@@ -259,14 +260,31 @@ router.post('/write-offs', requireRole('admin', 'it_asset_manager'), (req, res, 
   try {
     const assetId = typeof req.body?.asset_id === 'string' ? req.body.asset_id : '';
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
-    if (!assetId || !reason) return res.status(400).json({ error: 'An asset and write-off reason are required.' });
+    if (!assetId || !writeOffReasons.includes(reason)) {
+      return res.status(400).json({ error: 'Select an asset and a valid write-off reason.' });
+    }
     const writeOffDate = typeof req.body?.write_off_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.body.write_off_date)
       ? req.body.write_off_date
       : null;
+    const buybackEmployeeId = typeof req.body?.buyback_employee_id === 'string'
+      ? req.body.buyback_employee_id.trim()
+      : '';
     const approvedBy = typeof req.body?.approved_by === 'string' && req.body.approved_by.trim()
       ? req.body.approved_by.trim()
       : null;
     const db = getDb();
+    const buybackEmployee = reason === 'Buyback'
+      ? db.prepare(
+          `SELECT employee_name, employee_id, designation, department
+           FROM it_employee_asset_assignments
+           WHERE employee_id = ?
+           ORDER BY updated_at DESC, created_at DESC
+           LIMIT 1`,
+        ).get(buybackEmployeeId)
+      : null;
+    if (reason === 'Buyback' && !buybackEmployee) {
+      return res.status(400).json({ error: 'Select an employee from Employee Asset Management for a Buyback request.' });
+    }
     const asset = db.prepare('SELECT * FROM it_assets WHERE id = ?').get(assetId);
     if (!asset) return res.status(404).json({ error: 'Asset not found.' });
     if (asset.status === 'RETIRED') return res.status(409).json({ error: 'This asset is already retired.' });
@@ -276,9 +294,25 @@ router.post('/write-offs', requireRole('admin', 'it_asset_manager'), (req, res, 
     const id = newId();
     try {
       db.prepare(
-      `INSERT INTO it_write_off_requests (id, asset_id, requester_id, reason, write_off_date, approved_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, assetId, req.user.id, reason, writeOffDate, approvedBy, nowIso(), nowIso());
+      `INSERT INTO it_write_off_requests (
+         id, asset_id, requester_id, reason, write_off_date, approved_by,
+         buyback_employee_name, buyback_employee_id, buyback_employee_designation, buyback_employee_department,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        assetId,
+        req.user.id,
+        reason,
+        writeOffDate,
+        approvedBy,
+        buybackEmployee?.employee_name ?? null,
+        buybackEmployee?.employee_id ?? null,
+        buybackEmployee?.designation ?? null,
+        buybackEmployee?.department ?? null,
+        nowIso(),
+        nowIso(),
+      );
     } catch (e) {
       if (e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
         return res.status(409).json({ error: 'This asset already has a write-off request awaiting review.' });
@@ -286,7 +320,10 @@ router.post('/write-offs', requireRole('admin', 'it_asset_manager'), (req, res, 
       throw e;
     }
     for (const admin of db.prepare("SELECT id FROM users WHERE active = 1 AND role = 'admin'").all()) {
-      notify(admin.id, 'ASSET_WRITE_OFF_REQUEST', 'Write-off approval required', `Asset ${asset.asset_tag}: ${reason}`, 'write_off_request', id);
+      const employeeSummary = buybackEmployee
+        ? ` · Buyback employee ${buybackEmployee.employee_name} (${buybackEmployee.employee_id}, ${buybackEmployee.designation}, ${buybackEmployee.department})`
+        : '';
+      notify(admin.id, 'ASSET_WRITE_OFF_REQUEST', 'Write-off approval required', `Asset ${asset.asset_tag}: ${reason}${employeeSummary}`, 'write_off_request', id);
     }
     audit(req.user.id, 'CREATE', 'write_off_request', id, 'SUCCESS');
     res.status(201).json(db.prepare('SELECT * FROM it_write_off_requests WHERE id = ?').get(id));
