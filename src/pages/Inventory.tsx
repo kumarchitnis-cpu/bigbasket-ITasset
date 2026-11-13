@@ -270,8 +270,10 @@ export function InventoryView(props: { assets: Asset[]; receipts: InventoryRecei
           })}</tbody>
         </table>{filteredStock.length === 0 && <EmptyState text="No stock matches the filters." />}</div>
       </section>
-      <section className="panel table-panel full-panel module-panel-gap"><PanelHeader title="Stock by category" subtitle="Count per category" /><HorizontalBars data={categoryBars} /></section>
-      <section className="panel table-panel full-panel module-panel-gap"><PanelHeader title="Stock by location" subtitle="Count per location" /><HorizontalBars data={locationBars} /></section>
+      <div className="inventory-stock-charts">
+        <section className="panel table-panel inventory-stock-chart"><PanelHeader title="Stock by category" subtitle="Count per category" /><HorizontalBars data={categoryBars} /></section>
+        <section className="panel table-panel inventory-stock-chart"><PanelHeader title="Stock by location" subtitle="Count per location" /><HorizontalBars data={locationBars} /></section>
+      </div>
       <section className="panel table-panel full-panel module-panel-gap">
         <PanelHeader title="Recent goods receipts" subtitle="Received and accepted quantities recorded against purchase orders" />
         <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Receipt</th><th>Purchase order</th><th>Supplier</th><th>Received</th><th>Accepted / ordered</th><th>Status</th></tr></thead><tbody>{receipts.map((receipt) => <tr key={receipt.id}><td><strong>{receipt.receipt_number}</strong></td><td>{receipt.purchase_order}</td><td>{receipt.vendor}</td><td>{formatDate(receipt.received_date)}</td><td>{receipt.accepted_quantity} / {receipt.ordered_quantity}</td><td><StatusBadge status={receipt.status} /></td></tr>)}</tbody></table>{receipts.length === 0 && <EmptyState text="No goods receipts recorded yet." />}</div>

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type RefObject } from 'react';
 import {
   LayoutDashboard,
   Bot,
@@ -106,6 +106,7 @@ type TopNavProps = {
   mobileNavOpen: boolean;
   onSearch: (query: string) => void;
   onOpenSearch: () => void;
+  searchBoxRef: RefObject<HTMLDivElement>;
   searchQuery: string;
   searchOpen: boolean;
   onOpenNotifications: () => void;
@@ -126,6 +127,7 @@ export function TopNav({
   mobileNavOpen,
   onSearch,
   onOpenSearch,
+  searchBoxRef,
   searchQuery,
   searchOpen,
   onOpenNotifications,
@@ -178,7 +180,7 @@ export function TopNav({
 
   return (
     <>
-      <header className="top-nav" role="banner">
+      <header className={`top-nav ${searchOpen ? 'search-open' : ''}`} role="banner">
         <div className="top-nav-inner">
           <div className="top-nav-brand">
             <img className="brand-logo top-nav-logo" src="/images/images.jpeg" alt="Bigbasket" />
@@ -251,17 +253,12 @@ export function TopNav({
             ))}
           </nav>
 
-          <div className="top-nav-actions">
-            <div className="global-search-wrap" ref={searchInputRef}>
+          <div className="top-nav-search-group">
+            <div className="global-search-wrap" ref={searchBoxRef}>
               <div className={`global-search ${searchOpen ? 'search-active' : ''}`}>
                 <button type="button" className="search-trigger" aria-label="Open workspace search" onClick={onOpenSearch}>
                   <Search size={17} />
                 </button>
-                {activeTab !== 'Dashboard' && (
-                  <button type="button" className="search-trigger ai-trigger" aria-label="Open AI assistant" onClick={() => onNavigate('AI Assistant')}>
-                    <Sparkles size={15} />
-                  </button>
-                )}
                 <input
                   ref={searchInputRef}
                   value={searchQuery}
@@ -272,6 +269,16 @@ export function TopNav({
                   aria-expanded={searchOpen}
                 />
                 <kbd>Ctrl K</kbd>
+                <button
+                  type="button"
+                  className="search-ai-button"
+                  aria-label="Open AI Assistant"
+                  title="Open AI Assistant"
+                  onClick={() => onNavigate('AI Assistant')}
+                >
+                  <Sparkles size={16} aria-hidden="true" />
+                  <span>AI</span>
+                </button>
                 {searchQuery && (
                   <button className="search-clear" aria-label="Clear search" onClick={() => { onSearch(''); onOpenSearch(); searchInputRef.current?.focus(); }}>
                     <X size={14} />
@@ -279,7 +286,9 @@ export function TopNav({
                 )}
               </div>
             </div>
+          </div>
 
+          <div className="top-nav-actions">
             <button
               className="icon-button notification-button"
               aria-label="Notifications"

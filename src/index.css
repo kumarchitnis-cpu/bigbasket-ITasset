@@ -1541,6 +1541,20 @@ button.assistant-capability:hover { border-color: #c6dadd; background: #f6fbfb; 
 .chart-horizontal-track > span.red { background: #d87857; }
 .chart-horizontal-track > span.green { background: #8ebd3d; }
 
+.inventory-stock-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+.inventory-stock-chart {
+  min-width: 0;
+  padding-bottom: 18px;
+}
+.inventory-stock-chart .chart-horizontal {
+  padding: 0 20px;
+}
+
 /* Charts — StackedActivityChart */
 .chart-stacked { display: flex; align-items: flex-end; gap: 6px; width: 100%; }
 .chart-stacked-column { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
@@ -1793,6 +1807,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .topbar { top: 64px; padding: 0 16px; }
   .breadcrumbs { margin-left: 0; }
   .page-content { padding: 24px 16px 40px; }
+  .inventory-stock-charts { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 480px) {
   .top-nav-inner { gap: 12px; }
@@ -2072,6 +2087,104 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     justify-content: center;
   }
   .top-nav-trigger span {
+    display: none;
+  }
+}
+
+/* Keep workspace search centered between navigation and account actions. */
+.top-nav-menu {
+  display: none;
+}
+.top-nav-search-group {
+  display: flex;
+  flex: 0 1 390px;
+  align-items: center;
+  width: min(390px, 42vw);
+  min-width: 240px;
+  margin: 0 auto;
+}
+.global-search-wrap {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+.global-search-wrap .global-search {
+  width: 100%;
+}
+.search-ai-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--bb-green-dark);
+  background: transparent;
+}
+.search-ai-button span {
+  font-size: 9px;
+  font-weight: 800;
+}
+.search-ai-button:hover,
+.search-ai-button:focus-visible {
+  color: #3f6e1d;
+  background: var(--bb-green-soft);
+}
+.global-search.search-active .search-ai-button {
+  color: var(--bb-green-dark);
+}
+
+@media (max-width: 800px) {
+  .top-nav-search-group {
+    flex: 0 0 36px;
+    width: 36px;
+    min-width: 36px;
+    margin: 0;
+  }
+  .global-search-wrap {
+    flex: 0 0 36px;
+    width: 36px;
+  }
+  .global-search-wrap .search-ai-button {
+    display: none;
+  }
+  .global-search-wrap .global-search.search-active .search-ai-button {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 800px) {
+  .top-nav-inner {
+    position: relative;
+  }
+  .top-nav.search-open .top-nav-search-group {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    z-index: 5;
+    width: min(320px, calc(100vw - 145px));
+    min-width: 0;
+    transform: translateY(-50%);
+  }
+  .top-nav.search-open .global-search-wrap {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .top-nav.search-open .global-search-wrap .global-search {
+    width: 100%;
+  }
+  .top-nav.search-open .global-search-wrap .global-search.search-active {
+    position: static;
+    height: 38px;
+  }
+  .top-nav.search-open .top-nav-brand-name,
+  .top-nav.search-open .top-nav-brand-subtitle,
+  .top-nav.search-open .top-nav-trigger span,
+  .top-nav.search-open .top-nav-actions {
     display: none;
   }
 }

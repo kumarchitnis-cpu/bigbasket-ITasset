@@ -470,6 +470,7 @@ function App() {
         mobileNavOpen={mobileNavOpen}
         onSearch={handleSearch}
         onOpenSearch={handleOpenSearch}
+        searchBoxRef={searchBoxRef}
         searchQuery={query}
         searchOpen={searchOpen}
         onOpenNotifications={handleOpenNotifications}
